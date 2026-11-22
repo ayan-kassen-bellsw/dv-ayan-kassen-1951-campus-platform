@@ -6,6 +6,7 @@ repo=$(git rev-parse --show-toplevel)
 scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT
 cp "$repo"/infra/*.tf "$repo/infra/.terraform.lock.hcl" "$scratch/"
+cp "$repo/.github/scripts/check-network-plan.jq" "$scratch/"
 cd "$scratch"
 terraform init -input=false -backend=false -lockfile=readonly
 terraform validate
@@ -22,4 +23,4 @@ HCL
 export AWS_ACCESS_KEY_ID=offline AWS_SECRET_ACCESS_KEY=offline
 export AWS_EC2_METADATA_DISABLED=true AWS_ENDPOINT_URL=http://127.0.0.1:1
 terraform plan -input=false -refresh=false -out=network.tfplan
-terraform show -json network.tfplan | jq -er -f "$repo/.github/scripts/check-network-plan.jq"
+terraform show -json network.tfplan | jq -er -f check-network-plan.jq
