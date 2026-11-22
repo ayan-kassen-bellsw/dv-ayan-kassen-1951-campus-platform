@@ -75,12 +75,32 @@ jobs:
         run: bash .github/scripts/compose-smoke.sh
       - name: Scan the final image for HIGH and CRITICAL vulnerabilities
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        env:
-          VERSION: 0.76.2
-          SHA256: bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
         run: |
-          archive="$RUNNER_TEMP/trivy.tar.gz"
-          curl -fsSL --retry 3 -o "$archive" "https://github.com/aquasecurity/trivy/releases/download/v$VERSION/trivy_${VERSION}_Linux-64bit.tar.gz"
-          printf '%s  %s\n' "$SHA256" "$archive" | sha256sum --check
-          tar xzf "$archive" -C "$RUNNER_TEMP" trivy
+          bash .github/scripts/install-trivy.sh
           "$RUNNER_TEMP/trivy" image --image-src docker --scanners vuln --severity HIGH,CRITICAL --exit-code 1 campus-app:dev
+
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Terraform
+        env:
+          VERSION: 1.17.2
+          SHA256: e6f16b2f0b137ee5729caa8c4e79a3bae4ee261acd198a1fcfa8584a6296605b
+        run: |
+          archive="$RUNNER_TEMP/terraform.zip"
+          curl -fsSL --retry 3 -o "$archive" "https://releases.hashicorp.com/terraform/$VERSION/terraform_${VERSION}_linux_amd64.zip"
+          printf '%s  %s\n' "$SHA256" "$archive" | sha256sum --check
+          unzip -oq "$archive" terraform -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Check Terraform formatting
+        run: terraform fmt -check -diff -recursive infra
+      - name: Scan Terraform for HIGH and CRITICAL misconfigurations
+        run: |
+          bash .github/scripts/install-trivy.sh
+          "$RUNNER_TEMP/trivy" config --severity HIGH,CRITICAL --exit-code 1 infra
+      - name: Validate and plan the network without an AWS account
+        run: bash .github/scripts/terraform-plan.sh
