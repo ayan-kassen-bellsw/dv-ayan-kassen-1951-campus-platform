@@ -45,6 +45,15 @@ Run the tests and the linter without Docker:
 make venv && make test && make lint
 ```
 
+## Pull request checks
+
+GitHub Actions runs the following checks on pull requests and pushes to `main`.
+
+- Ruff checks lint and formatting. Pytest runs the application tests.
+- Gitleaks scans the Git history for exposed secrets.
+- `pip-audit` checks the resolved application and development dependencies for known vulnerabilities.
+- CI builds the application image and starts it with PostgreSQL using Docker Compose. It checks readiness, saves a scholarship application, and tests the password endpoint with 15- and 16-character inputs. Trivy scans the built image and fails the check on HIGH or CRITICAL findings.
+
 ## Configuration (environment variables)
 
 Every setting is an environment variable. **Any secret can instead be read from
@@ -96,5 +105,5 @@ tests/               pytest suite (uses SQLite, no services needed)
 Dockerfile           multi-stage, non-root, with HEALTHCHECK
 compose.yaml         LOCAL development only
 deploy/local/        Prometheus + Grafana config for the local monitoring profile
-.github/workflows/   ci.yml: lint + tests
+.github/workflows/   CI checks for code, dependencies, the image and the running service
 ```
