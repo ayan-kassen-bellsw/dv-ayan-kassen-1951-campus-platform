@@ -16,13 +16,14 @@ data "aws_ssm_parameter" "al2023" {
 }
 
 locals {
-  node_ami_id = var.ami_id != null ? var.ami_id : data.aws_ssm_parameter.al2023[0].insecure_value
-  server_ip   = cidrhost(local.subnet_cidrs.public, 10)
-  node_roles  = toset(["server", "agent"])
+  node_ami_id      = var.ami_id != null ? var.ami_id : data.aws_ssm_parameter.al2023[0].insecure_value
+  server_ip        = cidrhost(local.subnet_cidrs.public, 10)
+  node_roles       = toset(["server", "agent"])
+  custom_iam_roles = var.learner_lab == null ? local.node_roles : toset([])
   node_user_data = {
     for role in local.node_roles : role => templatefile("${path.module}/bootstrap/cloud-init.sh.tftpl", {
       role            = role
-      bucket          = aws_s3_bucket.bootstrap.bucket
+      bucket          = local.bootstrap_bucket_name
       region          = var.aws_region
       version         = local.k3s_version
       server_ip       = local.server_ip
@@ -32,7 +33,7 @@ locals {
 }
 
 resource "aws_iam_role" "node" {
-  for_each = local.node_roles
+  for_each = local.custom_iam_roles
 
   name = "${var.resource_prefix}-k3s-${each.key}"
   assume_role_policy = jsonencode({
@@ -46,7 +47,7 @@ resource "aws_iam_role" "node" {
 }
 
 resource "aws_iam_role_policy" "bootstrap" {
-  for_each = local.node_roles
+  for_each = local.custom_iam_roles
 
   name = "${var.resource_prefix}-${each.key}-bootstrap"
   role = aws_iam_role.node[each.key].id
@@ -70,11 +71,11 @@ resource "aws_iam_role_policy" "bootstrap" {
         Effect = "Allow"
         # Checksum-enabled SSE-KMS downloads can require both KMS permissions.
         Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
-        Resource = aws_kms_key.bootstrap.arn
+        Resource = aws_kms_key.bootstrap[0].arn
         Condition = {
           StringEquals = {
             "kms:ViaService"                   = "s3.${var.aws_region}.amazonaws.com"
-            "kms:EncryptionContext:aws:s3:arn" = aws_s3_bucket.bootstrap.arn
+            "kms:EncryptionContext:aws:s3:arn" = local.bootstrap_bucket_arn
           }
         }
       },
@@ -83,7 +84,7 @@ resource "aws_iam_role_policy" "bootstrap" {
 }
 
 resource "aws_iam_instance_profile" "node" {
-  for_each = local.node_roles
+  for_each = local.custom_iam_roles
   name     = "${var.resource_prefix}-k3s-${each.key}"
   role     = aws_iam_role.node[each.key].name
 }
@@ -95,8 +96,8 @@ resource "aws_instance" "server" {
   private_ip                  = local.server_ip
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.workload["ingress"].id, aws_security_group.workload["app"].id]
-  iam_instance_profile        = aws_iam_instance_profile.node["server"].name
-  user_data                   = local.node_user_data.server
+  iam_instance_profile        = var.learner_lab == null ? aws_iam_instance_profile.node["server"].name : data.aws_iam_instance_profile.learner[0].name
+  user_data                   = var.learner_lab == null ? local.node_user_data.server : local.lab_node_user_data.server
   user_data_replace_on_change = true
 
   metadata_options {
@@ -136,8 +137,8 @@ resource "aws_instance" "agent" {
   private_ip                  = cidrhost(local.subnet_cidrs.private, 10)
   associate_public_ip_address = false
   vpc_security_group_ids      = [aws_security_group.workload["app"].id]
-  iam_instance_profile        = aws_iam_instance_profile.node["agent"].name
-  user_data                   = local.node_user_data.agent
+  iam_instance_profile        = var.learner_lab == null ? aws_iam_instance_profile.node["agent"].name : data.aws_iam_instance_profile.learner[0].name
+  user_data                   = var.learner_lab == null ? local.node_user_data.agent : local.lab_node_user_data.agent
   user_data_replace_on_change = true
 
   metadata_options {

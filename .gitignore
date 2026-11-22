@@ -16,6 +16,7 @@ infra/.artifacts/
 *.tfstate.*
 *.tfplan
 *.tfvars
+*.tfvars.json
 !*.tfvars.example
 # keys
 *.pem

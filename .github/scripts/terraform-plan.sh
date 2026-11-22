@@ -31,6 +31,11 @@ terraform show -json cluster.tfplan > plan.json
 jq -er -f check-network-plan.jq plan.json
 jq -er -f check-k3s-plan.jq plan.json
 
+# Only the existing profile and IDs normally assigned on apply need fixture values.
+# The test uses the locked provider, never applies a plan, and exercises the real EC2 resources.
+cp "$repo/.github/scripts/learner-lab.tftest.hcl" .
+terraform test -no-color -filter=learner-lab.tftest.hcl
+
 # Give the generated bucket a known name *after* checking the untouched resource plan,
 # so Terraform can render the exact user data expressions passed to both instances.
 cat >> override.tf <<'HCL'

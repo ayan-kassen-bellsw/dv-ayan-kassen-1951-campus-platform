@@ -97,10 +97,14 @@ jobs:
           unzip -oq "$archive" terraform -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Check Terraform formatting
-        run: terraform fmt -check -diff -recursive infra
+        run: |
+          terraform fmt -check -diff -recursive infra
+          terraform fmt -check -diff .github/scripts/learner-lab.tftest.hcl
       - name: Scan Terraform for HIGH and CRITICAL misconfigurations
         run: |
           bash .github/scripts/install-trivy.sh
           "$RUNNER_TEMP/trivy" config --severity HIGH,CRITICAL --exit-code 1 infra
-      - name: Verify the network, EC2 nodes and k3s bootstrap without an AWS account
+          printf '%s\n' 'learner_lab = { bucket_name = "dv-ayan-kassen-1951-bootstrap-ci" }' > "$RUNNER_TEMP/learner.tfvars"
+          "$RUNNER_TEMP/trivy" config --tf-vars "$RUNNER_TEMP/learner.tfvars" --severity HIGH,CRITICAL --exit-code 1 infra
+      - name: Verify standard and Learner Lab Terraform plans and k3s bootstrap
         run: bash .github/scripts/terraform-plan.sh

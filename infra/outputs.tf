@@ -45,5 +45,5 @@ output "server_public_ip" {
 
 output "bootstrap_bucket" {
   description = "Name of the private bucket for the pinned k3s release and its runtime agent token."
-  value       = aws_s3_bucket.bootstrap.id
+  value       = local.bootstrap_bucket_name
 }
