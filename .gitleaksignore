@@ -1,0 +1,2 @@
+# Public password-policy test input in test_password_policy_configurable (never used as a credential).
+d84df01bd2a2fc7a1db4891fe3f74d6e89fa1ec5:tests/test_app.py:generic-api-key:100
