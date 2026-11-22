@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+install -d -m 0755 /usr/local/sbin /usr/local/bin
+install -d -m 0700 /etc/rancher/k3s /var/lib/k3s-bootstrap /var/lib/rancher/k3s/agent/images
+
+cat > /etc/modules-load.d/k3s.conf <<'MODULES'
+overlay
+br_netfilter
+vxlan
+MODULES
+cat > /etc/sysctl.d/90-k3s.conf <<'SYSCTL'
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-iptables = 1
+SYSCTL
+
+cat > /usr/local/sbin/k3s-bootstrap <<'BOOTSTRAP'
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+role='${role}'
+bucket='${bucket}'
+region='${region}'
+version='${version}'
+server_ip='${server_ip}'
+manifest_sha256='${manifest_sha256}'
+export AWS_S3_US_EAST_1_REGIONAL_ENDPOINT=regional
+config=/etc/rancher/k3s
+state=/var/lib/k3s-bootstrap
+images=/var/lib/rancher/k3s/agent/images
+binary=/usr/local/bin/k3s
+archive=k3s-airgap-images-amd64.tar.zst
+join_object="s3://$bucket/cluster/agent-token"
+token_pattern='^K10[0-9a-f]{64}::node:[0-9a-f]{64}$'
+
+fail() { echo "$1" >&2; exit 1; }
+s3_copy() { aws --region "$region" s3 cp --only-show-errors "$@"; }
+
+install_release() {
+  if [[ -x $binary && -s $images/$archive && -f $state/version && $(<"$state/version") == "$version" ]]; then
+    return
+  fi
+  cd "$state"
+  for name in sha256sum-amd64.txt k3s "$archive"; do
+    s3_copy "s3://$bucket/releases/$version/$name" "$name"
+  done
+  printf '%s  sha256sum-amd64.txt\n' "$manifest_sha256" | sha256sum --check --status || fail 'Release manifest checksum failed'
+  for name in k3s "$archive"; do
+    digest=$(awk -v name="$name" '$2 == name || $2 == "*" name {print $1}' sha256sum-amd64.txt)
+    [[ $digest =~ ^[0-9a-f]{64}$ ]] || fail "Missing or ambiguous checksum for $name"
+    printf '%s  %s\n' "$digest" "$name" | sha256sum --check --status || fail "Checksum failed for $name"
+  done
+  install -m 0755 k3s "$binary.new"
+  mv -f "$binary.new" "$binary"
+  mv -f "$archive" "$images/$archive"
+  printf '%s\n' "$version" > version.new
+  mv -f version.new version
+  rm -f k3s sha256sum-amd64.txt
+}
+
+start_node() {
+  install_release
+  modprobe -a overlay br_netfilter vxlan
+  sysctl -q -p /etc/sysctl.d/90-k3s.conf
+  if [[ $role == server ]]; then
+    if [[ ! -s $config/agent-password ]]; then
+      od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "$config/agent-password.new"
+      mv -f "$config/agent-password.new" "$config/agent-password"
+    fi
+    umask 022
+    exec "$binary" server --agent-token-file "$config/agent-password" --tls-san "$server_ip" --prefer-bundled-bin
+  fi
+  [[ $role == agent ]] || fail 'Unknown node role'
+  [[ -s $config/join-token ]] || fail 'Waiting for the server to publish the agent token'
+  umask 022
+  exec "$binary" agent --server "https://$server_ip:6443" --token-file "$config/join-token" --with-node-id --prefer-bundled-bin
+}
+
+sync_token() (
+  tmp=$(mktemp "$config/.join-token.XXXXXXXX")
+  trap 'rm -f "$tmp"' EXIT
+  if [[ $role == server ]]; then
+    # K3s generates the CA-pinned agent credential when --agent-token-file is set.
+    generated=/var/lib/rancher/k3s/server/agent-token
+    [[ -f $generated && ! -L $generated && -s $config/agent-password ]] || fail 'Waiting for the dedicated agent token'
+    token=$(<"$generated")
+    [[ $token =~ $token_pattern && $token == *"::node:$(<"$config/agent-password")" ]] || fail 'Invalid dedicated agent token'
+    printf '%s\n' "$token" > "$tmp"
+    fingerprint=$(sha256sum < "$tmp")
+    if [[ -f $state/published && $(<"$state/published") == "$fingerprint" ]]; then
+      exit 0
+    fi
+    s3_copy "$tmp" "$join_object"
+    printf '%s\n' "$fingerprint" > "$state/published"
+  else
+    [[ $role == agent ]] || fail 'Unknown node role'
+    s3_copy "$join_object" "$tmp"
+    [[ $(<"$tmp") =~ $token_pattern ]] || fail 'Invalid remote agent token'
+    if ! cmp -s "$tmp" "$config/join-token"; then
+      # A replacement server creates a new CA. Restart even if the old join is still retrying.
+      action=start
+      if [[ -s $config/join-token ]]; then action=restart; fi
+      printf '%s\n' "$action" > "$state/join-action"
+      mv -f "$tmp" "$config/join-token"
+    fi
+    if [[ -s $state/join-action ]]; then
+      systemctl --no-block "$(<"$state/join-action")" k3s.service
+      rm -f "$state/join-action"
+    fi
+  fi
+)
+
+case "$1" in
+  start) start_node ;;
+  sync-token) sync_token ;;
+  *) fail 'Usage: k3s-bootstrap start|sync-token' ;;
+esac
+BOOTSTRAP
+chmod 0755 /usr/local/sbin/k3s-bootstrap
+
+cat > /etc/systemd/system/k3s.service <<'UNIT'
+[Unit]
+Description=K3s Kubernetes node
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+ExecStart=/usr/local/sbin/k3s-bootstrap start
+Restart=always
+RestartSec=20s
+TimeoutStartSec=0
+KillMode=process
+Delegate=yes
+TasksMax=infinity
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+cat > /etc/systemd/system/k3s-token-sync.service <<'UNIT'
+[Unit]
+Description=Synchronize the K3s agent join token with regional S3
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/k3s-bootstrap sync-token
+UNIT
+cat > /etc/systemd/system/k3s-token-sync.timer <<'TIMER'
+[Unit]
+Description=Retry K3s agent registration and detect token changes
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+systemctl daemon-reload
+systemctl enable --now --no-block k3s.service k3s-token-sync.timer
