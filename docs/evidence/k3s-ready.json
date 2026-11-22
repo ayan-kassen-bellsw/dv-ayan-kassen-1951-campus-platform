@@ -1,0 +1,21 @@
+{
+  "verified_at_utc": "2026-11-22T22:44:37.814433+00:00",
+  "source": "live Kubernetes API, k3s kubectl get nodes -o json on EC2 server (host key pinned)",
+  "region": "us-east-1",
+  "nodes": [
+    {
+      "name": "ip-10-56-1-10.ec2.internal",
+      "internal_ip": "10.56.1.10",
+      "ready": "True",
+      "version": "v1.37.2+k3s1",
+      "role": "server"
+    },
+    {
+      "name": "ip-10-56-2-10.ec2.internal-384dac5f",
+      "internal_ip": "10.56.2.10",
+      "ready": "True",
+      "version": "v1.37.2+k3s1",
+      "role": "agent"
+    }
+  ]
+}

@@ -53,9 +53,11 @@ GitHub Actions runs the following checks on pull requests and pushes to `main`.
 - Gitleaks scans the Git history for exposed secrets.
 - `pip-audit` checks the resolved application and development dependencies for known vulnerabilities.
 - CI builds the application image and starts it with PostgreSQL using Docker Compose. It checks readiness, saves a scholarship application, and tests the password endpoint with 15- and 16-character inputs. Trivy scans the built image and fails the check on HIGH or CRITICAL findings.
-- The Terraform job checks formatting, validates the configuration, scans it with Trivy, and verifies the network and both k3s nodes in a plan.
+- The Terraform job checks formatting, validates the configuration and scans it with Trivy. Offline plans verify both the standard AWS and Learner Lab configurations, including the two EC2 nodes and their bootstrap permissions.
 
 ## AWS network
+
+For AWS Academy, follow the [Learner Lab deployment guide](docs/learner-lab.md). It covers temporary credentials, the existing `LabInstanceProfile`, and how to use the same Terraform state on the next run. The [recorded Kubernetes API result](docs/evidence/k3s-ready.json) shows both nodes `Ready` in `us-east-1`.
 
 The Terraform configuration in `infra/` defines the project's IPv4 network and two EC2 instances. `aws_region` defaults to `us-east-1`, `vpc_cidr` to `10.56.0.0/16`, and `resource_prefix` to `dv-ayan-kassen-1951`.
 
@@ -100,9 +102,9 @@ Before applying the configuration from a new checkout, run the following from th
 bash infra/bootstrap/download.sh
 ```
 
-The AWS identity running an apply needs access to the EC2, VPC, S3 and KMS resources, permission to create the node roles and instance profiles, and permission to pass those roles to EC2. Terraform uploads the release files to a private S3 bucket encrypted with a dedicated KMS key, then starts the instances.
+In a standard AWS account, the identity running an apply needs access to the EC2, VPC, S3 and KMS resources, permission to create the node roles and instance profiles, and permission to pass those roles to EC2. Terraform uploads the release files to a private S3 bucket encrypted with a dedicated KMS key, then starts the instances. Learner Lab uses the existing instance profile and the AWS-managed S3 KMS key.
 
-Cloud-init installs systemd services on both nodes. Each node checks the manifest against the digest from Terraform and uses it to verify the binary and images. The server generates a separate agent credential and publishes the CA-bound agent token using its instance role. The agent reads it with its own role and connects to the server's private address. Supply application images separately when deploying workloads.
+Cloud-init installs systemd services on both nodes. Each node checks the manifest against the digest from Terraform and uses it to verify the binary and images. The server generates a separate agent credential and publishes the CA-bound agent token. The agent retrieves it through the S3 endpoint using its instance credentials and connects to the server's private address. Supply application images separately when deploying workloads.
 
 The single server keeps the Kubernetes datastore on its root volume. Server replacement creates a fresh cluster and replaces its agent. Once private administration access is available, run `sudo /usr/local/bin/k3s kubectl get nodes -o wide` on the server and check that both private addresses report `Ready`. Terraform destroy empties the dedicated bootstrap bucket, including the generated agent token. Keep application data in a separate bucket. Budget for EC2, EBS, S3, KMS and the server's public IPv4 address when provisioning this stack.
 

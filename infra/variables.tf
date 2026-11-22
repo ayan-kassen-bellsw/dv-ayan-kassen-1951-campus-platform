@@ -12,6 +12,24 @@ variable "resource_prefix" {
   nullable    = false
 }
 
+variable "learner_lab" {
+  description = "Use the shared Academy instance profile and a dedicated, globally unique bucket named <resource_prefix>-bootstrap-<suffix>."
+  type = object({
+    bucket_name        = string
+    python_executable  = optional(string, "python")
+    bucket_helper_path = optional(string)
+  })
+  default = null
+
+  validation {
+    condition = var.learner_lab == null ? true : (
+      can(regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$", var.learner_lab.bucket_name)) &&
+      trimspace(var.learner_lab.python_executable) != ""
+    )
+    error_message = "Use a lowercase, DNS-compatible bucket name and a Python executable with boto3 installed."
+  }
+}
+
 variable "vpc_cidr" {
   description = "IPv4 /16 network from which the public and private /24 subnets are allocated."
   type        = string
