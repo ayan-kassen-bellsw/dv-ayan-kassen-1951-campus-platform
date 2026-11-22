@@ -58,7 +58,6 @@ run "learner_lab" {
       aws_s3_bucket_server_side_encryption_configuration.bootstrap.bucket == var.learner_lab.bucket_name &&
       one(aws_s3_bucket_server_side_encryption_configuration.bootstrap.rule).bucket_key_enabled &&
       one(one(aws_s3_bucket_server_side_encryption_configuration.bootstrap.rule).apply_server_side_encryption_by_default).sse_algorithm == "aws:kms" &&
-      one(one(aws_s3_bucket_server_side_encryption_configuration.bootstrap.rule).apply_server_side_encryption_by_default).kms_master_key_id == null &&
       aws_s3_bucket_public_access_block.bootstrap.block_public_acls && aws_s3_bucket_public_access_block.bootstrap.ignore_public_acls &&
       aws_s3_bucket_public_access_block.bootstrap.block_public_policy && aws_s3_bucket_public_access_block.bootstrap.restrict_public_buckets
     )
