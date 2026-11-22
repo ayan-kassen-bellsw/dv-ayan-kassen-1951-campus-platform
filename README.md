@@ -54,6 +54,37 @@ GitHub Actions runs the following checks on pull requests and pushes to `main`.
 - `pip-audit` checks the resolved application and development dependencies for known vulnerabilities.
 - CI builds the application image and starts it with PostgreSQL using Docker Compose. It checks readiness, saves a scholarship application, and tests the password endpoint with 15- and 16-character inputs. Trivy scans the built image and fails the check on HIGH or CRITICAL findings.
 
+## AWS network
+
+The Terraform configuration in `infra/` defines the project's IPv4 network. `aws_region` defaults to `us-east-1`, `vpc_cidr` to `10.56.0.0/16`, and `resource_prefix` to `dv-ayan-kassen-1951`. Outputs expose the VPC ID, subnet CIDRs and IDs, route table IDs and security group IDs for the compute stage.
+
+| Network | CIDR | Routing |
+|---|---|---|
+| VPC | `10.56.0.0/16` | Both subnets can route within the VPC. Security groups control which connections are allowed. |
+| Public subnet | `10.56.1.0/24` | Its default route points to the internet gateway. A future public ingress instance will need a public IPv4 address. |
+| Private subnet | `10.56.2.0/24` | Its route table contains only the local VPC route. |
+
+Both subnets default to `us-east-1a`, with public IP assignment disabled at launch. Attach the `app` security group to both future k3s nodes, add `ingress` to the public k3s server and attach `database` to the private PostgreSQL interface.
+
+| Source | Destination | Allowed traffic |
+|---|---|---|
+| Internet | `ingress` | TCP 80 and 443 for web requests |
+| `app` | `ingress` | TCP 6443 for the k3s API |
+| `app` | `app` | UDP 8472 for the overlay and TCP 10250 for kubelet metrics |
+| `app` | `database` | TCP 5432 for PostgreSQL |
+
+SSH is closed. Application nodes can initiate only the cluster and database connections listed above. Before provisioning nodes, provide an internal image source or allow egress to the chosen registry and AWS endpoints. The private subnet has no NAT gateway.
+
+To preview changes against your AWS account, select your AWS CLI profile or session credentials and run these commands from the repository root:
+
+```sh
+terraform -chdir=infra init -lockfile=readonly
+terraform -chdir=infra validate
+terraform -chdir=infra plan
+```
+
+CI checks Terraform formatting, scans `infra/` with Trivy, and plans the network from empty state in a temporary directory with the locked AWS provider. To repeat the offline plan and its routing and firewall checks with Terraform and `jq` installed, run `bash .github/scripts/terraform-plan.sh` from the repository root. Use an authenticated AWS session to check live state before deployment.
+
 ## Configuration (environment variables)
 
 Every setting is an environment variable. **Any secret can instead be read from
@@ -104,6 +135,7 @@ app/sql/             EXAMPLE least-privilege roles for PostgreSQL / MySQL, Click
 tests/               pytest suite (uses SQLite, no services needed)
 Dockerfile           multi-stage, non-root, with HEALTHCHECK
 compose.yaml         LOCAL development only
+infra/               AWS VPC, subnets, routing and security groups
 deploy/local/        Prometheus + Grafana config for the local monitoring profile
 .github/workflows/   CI checks for code, dependencies, the image and the running service
 ```
