@@ -53,18 +53,19 @@ GitHub Actions runs the following checks on pull requests and pushes to `main`.
 - Gitleaks scans the Git history for exposed secrets.
 - `pip-audit` checks the resolved application and development dependencies for known vulnerabilities.
 - CI builds the application image and starts it with PostgreSQL using Docker Compose. It checks readiness, saves a scholarship application, and tests the password endpoint with 15- and 16-character inputs. Trivy scans the built image and fails the check on HIGH or CRITICAL findings.
+- The Terraform job checks formatting, validates the configuration, scans it with Trivy, and verifies the network and both k3s nodes in a plan.
 
 ## AWS network
 
-The Terraform configuration in `infra/` defines the project's IPv4 network. `aws_region` defaults to `us-east-1`, `vpc_cidr` to `10.56.0.0/16`, and `resource_prefix` to `dv-ayan-kassen-1951`. Outputs expose the VPC ID, subnet CIDRs and IDs, route table IDs and security group IDs for the compute stage.
+The Terraform configuration in `infra/` defines the project's IPv4 network and two EC2 instances. `aws_region` defaults to `us-east-1`, `vpc_cidr` to `10.56.0.0/16`, and `resource_prefix` to `dv-ayan-kassen-1951`.
 
 | Network | CIDR | Routing |
 |---|---|---|
 | VPC | `10.56.0.0/16` | Both subnets can route within the VPC. Security groups control which connections are allowed. |
-| Public subnet | `10.56.1.0/24` | Its default route points to the internet gateway. A future public ingress instance will need a public IPv4 address. |
-| Private subnet | `10.56.2.0/24` | Its route table contains only the local VPC route. |
+| Public subnet | `10.56.1.0/24` | Local VPC route, regional S3 gateway endpoint and a default route to the internet gateway. |
+| Private subnet | `10.56.2.0/24` | Local VPC route and regional S3 gateway endpoint. |
 
-Both subnets default to `us-east-1a`, with public IP assignment disabled at launch. Attach the `app` security group to both future k3s nodes, add `ingress` to the public k3s server and attach `database` to the private PostgreSQL interface.
+Both subnets default to `us-east-1a`. Both nodes use the `app` security group. The server also uses `ingress` and receives a public IPv4 address for web traffic. The agent has only a private address.
 
 | Source | Destination | Allowed traffic |
 |---|---|---|
@@ -72,8 +73,9 @@ Both subnets default to `us-east-1a`, with public IP assignment disabled at laun
 | `app` | `ingress` | TCP 6443 for the k3s API |
 | `app` | `app` | UDP 8472 for the overlay and TCP 10250 for kubelet metrics |
 | `app` | `database` | TCP 5432 for PostgreSQL |
+| `app` | Regional S3 prefix list | TCP 443 for bootstrap artifacts and the agent join token |
 
-SSH is closed. Application nodes can initiate only the cluster and database connections listed above. Before provisioning nodes, provide an internal image source or allow egress to the chosen registry and AWS endpoints. The private subnet has no NAT gateway.
+The security groups keep SSH and the Kubernetes API closed to the internet. The private agent obtains its installation files through the S3 gateway endpoint. The cluster can start without a NAT gateway.
 
 To preview changes against your AWS account, select your AWS CLI profile or session credentials and run these commands from the repository root:
 
@@ -83,7 +85,26 @@ terraform -chdir=infra validate
 terraform -chdir=infra plan
 ```
 
-CI checks Terraform formatting, scans `infra/` with Trivy, and plans the network from empty state in a temporary directory with the locked AWS provider. To repeat the offline plan and its routing and firewall checks with Terraform and `jq` installed, run `bash .github/scripts/terraform-plan.sh` from the repository root. Use an authenticated AWS session to check live state before deployment.
+To repeat the CI plan locally, run `bash .github/scripts/terraform-plan.sh` with Terraform and `jq` installed. It uses the locked AWS provider, an empty temporary state and a fixture AMI ID. An authenticated plan resolves the official Amazon Linux 2023 x86_64 AMI through the regional AWS public SSM parameter by default. To pin a particular Amazon Linux 2023 release, set `TF_VAR_ami_id` to its regional AMI ID.
+
+## k3s on EC2
+
+| Node | EC2 type | Private address | Purpose |
+|---|---|---|---|
+| Server | `t3.small` | `10.56.1.10` | Kubernetes control plane and web ingress |
+| Agent | `t3.small` | `10.56.2.10` | Joins the server over private TCP 6443 and runs workloads |
+
+Before applying the configuration from a new checkout, run the following from the repository root in Bash with `curl` and `sha256sum` installed. It downloads the pinned k3s binary, bundled system images and checksum manifest, verifies all three against the committed SHA-256 digests, and caches them in `infra/.artifacts/`. An offline plan can run before this download. [Pinned k3s release](https://github.com/k3s-io/k3s/releases/tag/v1.37.2%2Bk3s1)
+
+```sh
+bash infra/bootstrap/download.sh
+```
+
+The AWS identity running an apply needs access to the EC2, VPC, S3 and KMS resources, permission to create the node roles and instance profiles, and permission to pass those roles to EC2. Terraform uploads the release files to a private S3 bucket encrypted with a dedicated KMS key, then starts the instances.
+
+Cloud-init installs systemd services on both nodes. Each node checks the manifest against the digest from Terraform and uses it to verify the binary and images. The server generates a separate agent credential and publishes the CA-bound agent token using its instance role. The agent reads it with its own role and connects to the server's private address. Supply application images separately when deploying workloads.
+
+The single server keeps the Kubernetes datastore on its root volume. Server replacement creates a fresh cluster and replaces its agent. Once private administration access is available, run `sudo /usr/local/bin/k3s kubectl get nodes -o wide` on the server and check that both private addresses report `Ready`. Terraform destroy empties the dedicated bootstrap bucket, including the generated agent token. Keep application data in a separate bucket. Budget for EC2, EBS, S3, KMS and the server's public IPv4 address when provisioning this stack.
 
 ## Configuration (environment variables)
 
@@ -135,7 +156,7 @@ app/sql/             EXAMPLE least-privilege roles for PostgreSQL / MySQL, Click
 tests/               pytest suite (uses SQLite, no services needed)
 Dockerfile           multi-stage, non-root, with HEALTHCHECK
 compose.yaml         LOCAL development only
-infra/               AWS VPC, subnets, routing and security groups
+infra/               AWS networking, k3s EC2 nodes and cloud-init bootstrap
 deploy/local/        Prometheus + Grafana config for the local monitoring profile
 .github/workflows/   CI checks for code, dependencies, the image and the running service
 ```

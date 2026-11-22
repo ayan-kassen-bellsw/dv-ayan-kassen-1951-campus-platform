@@ -102,5 +102,5 @@ jobs:
         run: |
           bash .github/scripts/install-trivy.sh
           "$RUNNER_TEMP/trivy" config --severity HIGH,CRITICAL --exit-code 1 infra
-      - name: Validate and plan the network without an AWS account
+      - name: Verify the network, EC2 nodes and k3s bootstrap without an AWS account
         run: bash .github/scripts/terraform-plan.sh
