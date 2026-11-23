@@ -4,6 +4,8 @@ set -euo pipefail
 # Exercise immutable tags and registry errors without an AWS session or Docker daemon.
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
+scripts=$(cd "$(dirname "$0")" && pwd)
+bash "$scripts/test-release-ref.sh"
 export REGISTRY_FIXTURE="$work/manifests"
 export REVISION=0123456789abcdef0123456789abcdef01234567
 export ECR_PUSH_PASSWORD
@@ -21,6 +23,19 @@ case $ref in
   http://ingress.test/readyz) echo '{"ready":true,"checks":{"db":true,"storage":true}}'; exit ;;
   http://ingress.test/info)
     calls=$(wc -l < "$REGISTRY_FIXTURE/probes")
+    if [[ "$*" == *'Host: prod.scholarships.test'* ]]; then
+      version=v0.2.0
+      case $calls in
+        0) version=v0.1.0; host=dv-ayan-kassen-1951-prod-old ;;
+        1) host=dv-ayan-kassen-1951-app-main ;;
+        2) host=dv-ayan-kassen-1951-prod-one ;;
+        3) host=dv-ayan-kassen-1951-prod-two ;;
+        *) exit 1 ;;
+      esac
+      echo "$host" >> "$REGISTRY_FIXTURE/probes"
+      printf '{"git_sha":"%s","hostname":"%s","version":"%s"}\n' "$REVISION" "$host" "$version"
+      exit
+    fi
     case $calls in
       0) sha=$REVISION; host=pod-a ;;
       1) sha=old; host=pod-old ;;
@@ -74,6 +89,12 @@ cmp "$REGISTRY_FIXTURE/$REVISION" "$REGISTRY_FIXTURE/v0.1.0"
 printf 'other digest' > "$REGISTRY_FIXTURE/v1.0.0"
 if "${publish[@]}" v1.0.0; then exit 1; fi
 if "${publish[@]}" v01.0.0; then exit 1; fi
+prod_marker="deploy-prod-6-$REVISION-v0.2.0"
+"${publish[@]}" v0.2.0
+"${publish[@]}" "$prod_marker"
+"${publish[@]}" "$prod_marker"
+cmp "$REGISTRY_FIXTURE/$prod_marker" "$REGISTRY_FIXTURE/v0.2.0"
+if "${publish[@]}" "deploy-prod-6-$REVISION-v00.2.0"; then exit 1; fi
 
 # A retry may reuse the marker; earlier CIs and tags for another SHA cannot promote it.
 marker="deploy-main-52-$REVISION"
@@ -109,5 +130,8 @@ cmp "$REGISTRY_FIXTURE/$REVISION" "$REGISTRY_FIXTURE/$marker"
 printf '%s\n' superseded > "$REGISTRY_FIXTURE/main"
 "${deploy[@]}" verify
 [[ $(wc -l < "$REGISTRY_FIXTURE/probes") -eq 5 ]]
-bash "$(dirname "$0")/test-refresh-ecr-publisher.sh"
-echo "ECR publication, immutable promotion and main deployment checks passed."
+bash "$scripts/test-refresh-ecr-publisher.sh"
+: > "$REGISTRY_FIXTURE/probes"
+RELEASE_VERSION=v0.2.0 bash "$scripts/verify-ingress.sh" prod
+[[ $(wc -l < "$REGISTRY_FIXTURE/probes") -eq 4 ]]
+echo "ECR publication, immutable promotion and both deployment checks passed."

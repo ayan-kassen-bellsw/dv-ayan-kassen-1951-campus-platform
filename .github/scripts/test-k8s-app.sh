@@ -79,3 +79,28 @@ test -s "$work/requests"
 curl -fsS "$item_url/attachment" > "$work/download"
 cmp "$work/attachment" "$work/download"
 echo "Ingress -> PostgreSQL, attachments on both replicas, HPA target, update and rollback passed. $(wc -l < "$work/requests") sampled requests succeeded."
+
+prod=$ns-prod
+prod_host='Host: prod.scholarships.test'
+bash ops/bootstrap-prod.sh "$APP_IMAGE" kubectl
+[[ $("${k[@]}" get deploy "$prod" -o jsonpath='{.spec.replicas}') == 0 ]]
+for ((attempt=0; attempt<25; attempt++)); do
+  status=$(curl -sS --max-time 4 -o /dev/null -w '%{http_code}' -H "$prod_host" "$K3D_INGRESS_URL/info")
+  [[ $status == 503 ]] && break
+  sleep 1
+done
+[[ $status == 503 ]]
+
+# Exercise the first release in the disposable cluster and repeat the real bootstrap.
+"${k[@]}" set env "deployment/$prod" GIT_SHA="$GIT_SHA" APP_VERSION=v0.0.0-ci
+"${k[@]}" scale "deployment/$prod" --replicas=2
+"${k[@]}" rollout status "deployment/$prod" --timeout=3m
+generation=$("${k[@]}" get deployment "$prod" -o jsonpath='{.metadata.generation}')
+bash ops/bootstrap-prod.sh "$APP_IMAGE" kubectl
+[[ $("${k[@]}" get deployment "$prod" -o jsonpath='{.metadata.generation}') == "$generation" ]]
+curl -fsS --retry 10 --retry-all-errors --retry-delay 1 -H "$prod_host" "$K3D_INGRESS_URL/readyz" |
+  jq -e '.ready and .checks.db and .checks.storage'
+curl -fsS -H "$prod_host" "$K3D_INGRESS_URL/info" |
+  jq -e --arg prefix "$prod-" '.version == "v0.0.0-ci" and (.hostname | startswith($prefix))'
+expect_version local-1
+echo 'Prod was unavailable before activation; its two replicas, DB access, isolated route and repeat bootstrap passed.'

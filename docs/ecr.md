@@ -16,7 +16,9 @@ The two interfaces together cost about **$0.02/hour** in one availability zone, 
    ```
 
 3. Set `ECR_PUBLISH_ENABLED=true` and set `K3S_APP_URL` to the public Ingress origin in repository variables. Update the URL if the server's public address changes. Install the deployment service on the k3s server using the steps below. On a push to `main`, CI tests the image in Compose and k3s, scans it with Trivy and saves the tested artifact for one day. **Publish ECR** pushes the artifact under the full commit SHA. When that SHA is still the tip of `main`, the publisher signals the cluster and verifies the rollout through Ingress.
-4. Push a semver Git tag such as `v0.2.0` at a published commit on `main`. The tag signals the publisher on the default branch. It verifies the commit and attaches the version tag to the existing image manifest so both tags resolve to the same digest. For tags that predate this workflow, build the exact tagged checkout as `campus-app:dev` with the full commit in the OCI revision label, run the Compose and Trivy checks, then use the publication script from the current checkout.
+4. To release a published commit, push its semver Git tag and review the production deployment in GitHub. Approval promotes the SHA's existing manifest, and the server verifies the tagged release on its dedicated route. [Production releases](prod-releases.md)
+
+   The historical `v0.1.0` predates the release workflow. For that initial registry import, the exact tagged checkout was built as `campus-app:dev` with its OCI revision label, tested in Compose and scanned with Trivy. The original publication commands were:
 
    ```bash
    IMAGE=$(terraform -chdir=infra output -state="$STATE" -raw ecr_repository_url)

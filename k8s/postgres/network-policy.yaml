@@ -10,8 +10,10 @@ spec:
   ingress:
     - from:
         - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: scholarship-applications
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [scholarship-applications, scholarship-applications-prod]
       ports:
         - protocol: TCP
           port: 5432

@@ -58,6 +58,8 @@ GitHub Actions runs the following checks on pull requests and pushes to `main`.
 
 After a successful `main` build, GitHub publishes the tested image to ECR. The k3s server rolls out its digest, and GitHub verifies the commit and readiness through Ingress on two replicas. The [ECR and deployment guide](docs/ecr.md#deploy-images-from-main) covers setup, credential renewal and rollback.
 
+Pushing a version tag opens a production deployment review in GitHub. An approved release deploys the tagged image digest to a separate pair of Pods at the same Ingress address, using the host `prod.scholarships.test`. [Release and approval instructions](docs/prod-releases.md)
+
 The [PostgreSQL guide](docs/postgres.md) covers deployment on the private worker, credential rotation, and the k3s test that verifies role permissions and persistence across Pod replacement.
 
 PostgreSQL backs up scholarship applications and their attachments to S3 daily at 04:56 UTC. The bucket expires archives after seven days. [Backup installation and restore drill](docs/postgres-backups.md)

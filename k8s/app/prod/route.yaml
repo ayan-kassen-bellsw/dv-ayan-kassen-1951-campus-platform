@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dv-ayan-kassen-1951-prod
+  namespace: dv-ayan-kassen-1951
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: scholarship-applications-prod
+  ports:
+    - {name: http, port: 80, targetPort: http}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dv-ayan-kassen-1951-prod
+  namespace: dv-ayan-kassen-1951
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: prod.scholarships.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dv-ayan-kassen-1951-prod
+                port: {name: http}

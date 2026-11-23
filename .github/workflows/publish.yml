@@ -2,7 +2,7 @@ name: Publish ECR
 
 on:
   workflow_run:
-    workflows: [ci, ECR release tag]
+    workflows: [ci]
     types: [completed]
 
 permissions:
@@ -16,10 +16,7 @@ jobs:
       vars.ECR_PUBLISH_ENABLED == 'true' && github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      ((github.event.workflow_run.name == 'ci' && github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.path == '.github/workflows/ci.yml') ||
-       (github.event.workflow_run.name == 'ECR release tag' &&
-        github.event.workflow_run.path == '.github/workflows/ecr-tag.yml'))
+      github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.path == '.github/workflows/ci.yml'
     environment: ecr-publish
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -32,16 +29,10 @@ jobs:
       - name: Resolve the source commit on protected main
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-          UPSTREAM: ${{ github.event.workflow_run.name }}
         run: |
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           git merge-base --is-ancestor "$SOURCE_SHA" HEAD
-          if [[ "$UPSTREAM" == 'ECR release tag' ]]; then
-            git tag --points-at "$SOURCE_SHA" --list 'v*' > "$RUNNER_TEMP/release-tags"
-            test -s "$RUNNER_TEMP/release-tags"
-          fi
       - name: Download the tested image from this main run
-        if: github.event.workflow_run.name == 'ci'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: app-${{ github.event.workflow_run.head_sha }}
@@ -49,30 +40,20 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/tested-image
       - name: Load the CI image
-        if: github.event.workflow_run.name == 'ci'
         run: docker load --input "$RUNNER_TEMP/tested-image/app.tar"
-      - name: Publish the commit or promote its digest to the release tag
+      - name: Publish the tested commit to ECR
         env:
           ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
           ECR_PUSH_PASSWORD: ${{ secrets.ECR_PUSH_PASSWORD }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-          UPSTREAM: ${{ github.event.workflow_run.name }}
         run: |
           : "${ECR_REGISTRY:?Set ECR_REGISTRY to the private registry hostname}"
           : "${ECR_PUSH_PASSWORD:?Refresh the expiring ECR_PUSH_PASSWORD secret}"
           echo "::add-mask::$ECR_REGISTRY"
           image="$ECR_REGISTRY/dv-ayan-kassen-1951-scholarship-applications"
-          if [[ "$UPSTREAM" == 'ECR release tag' ]]; then
-            while IFS= read -r tag; do
-              [[ "$(git rev-parse --verify "refs/tags/$tag^{commit}")" == "$SOURCE_SHA" ]]
-              bash .github/scripts/publish-ecr.sh "$image" "$SOURCE_SHA" "$tag"
-            done < "$RUNNER_TEMP/release-tags"
-          else
-            bash .github/scripts/publish-ecr.sh "$image" "$SOURCE_SHA"
-          fi
+          bash .github/scripts/publish-ecr.sh "$image" "$SOURCE_SHA"
       - name: Signal the k3s server to deploy the current main image
         id: main_deploy
-        if: github.event.workflow_run.name == 'ci'
         env:
           ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
           ECR_PUSH_PASSWORD: ${{ secrets.ECR_PUSH_PASSWORD }}

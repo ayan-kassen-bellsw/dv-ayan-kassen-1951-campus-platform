@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
-[[ $# == 2 || $# == 3 ]] || fail "Usage: $0 <ECR image URI> <full commit SHA> [vMAJOR.MINOR.PATCH|deploy-main-<run>-<SHA>]"
+[[ $# == 2 || $# == 3 ]] || fail "Usage: $0 <ECR image URI> <full commit SHA> [SemVer tag or deployment marker]"
 image=$1
 revision=$2
 tag=${3:-}
@@ -17,8 +17,9 @@ if [[ $# == 3 ]]; then
   identifier="($number|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
   semver="^v$number\.$number\.$number(-$identifier(\.$identifier)*)?$"
   marker="^deploy-main-[1-9][0-9]*-$revision$"
-  [[ ${#tag} -le 128 && ( "$tag" =~ $semver || "$tag" =~ $marker ) ]] ||
-    fail "Expected a SemVer release tag or a main deployment marker for this SHA"
+  prod_marker="^deploy-prod-[1-9][0-9]*-$revision-${semver#^}"
+  [[ ${#tag} -le 128 && ( "$tag" =~ $semver || "$tag" =~ $marker || "$tag" =~ $prod_marker ) ]] ||
+    fail "Expected a SemVer release tag or a deployment marker for this SHA"
 fi
 
 work=$(mktemp -d)
