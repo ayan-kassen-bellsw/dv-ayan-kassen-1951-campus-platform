@@ -84,3 +84,7 @@ echo 'PASS: application fields, attachment length and SHA-256 match.'
 For a scheduled archive, pass the object key from the journal to the same restore script. Compare against the item as it existed at backup time. The script verifies the downloaded checksum, creates an unused `campus_restore_*` database and restores in a single transaction. The fresh database admits superusers only. Cluster roles must already exist on a replacement PostgreSQL instance. [Database provisioning and roles](postgres.md)
 
 The integration test deletes a synthetic application and its attachment after backup, restores the archive into a fresh database and compares all application fields and the attachment checksum. [Restore test](../.github/scripts/test-postgres-backup.sh)
+
+## Learner Lab result
+
+On 23 November 2026 the scheduled service was started manually on the private worker. It uploaded a 6,490-byte encrypted archive to S3. The archive restored into `campus_restore_20261123_061100`. Scholarship application 1 had the same row fingerprint in both databases. Its 67-byte attachment `verification.txt` had SHA-256 `f4da89d4b4287b198590a70b996bc197cda731fb48bce40d9b3deb2d153051dd` in both. S3 reported an enabled seven-day expiration rule, and systemd reported the next run for 24 November at 04:56 UTC. [Recorded restore drill](evidence/postgres-backup-restore.json)
