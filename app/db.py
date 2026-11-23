@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, create_engine, func, select, text
+from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String, Text, create_engine, func, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -23,6 +23,13 @@ class Item(Base):
     attachment_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
+class AttachmentBlob(Base):
+    __tablename__ = "attachment_blobs"
+
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+
+
 class Database:
     def __init__(self, url: str):
         kwargs = {"pool_pre_ping": True}
@@ -31,8 +38,11 @@ class Database:
         self.engine = create_engine(url, **kwargs)
         self.sessions = sessionmaker(self.engine, expire_on_commit=False)
 
-    def create_schema(self) -> None:
-        Base.metadata.create_all(self.engine)
+    def create_schema(self, *, database_attachments: bool = False) -> None:
+        tables = [Item.__table__]
+        if database_attachments:
+            tables.append(AttachmentBlob.__table__)
+        Base.metadata.create_all(self.engine, tables=tables)
 
     def session(self) -> Session:
         return self.sessions()
@@ -48,3 +58,11 @@ class Database:
     def count_items(self) -> int:
         with self.session() as s:
             return s.scalar(select(func.count()).select_from(Item)) or 0
+
+    def attachments_ready(self) -> bool:
+        try:
+            with self.session() as s:
+                s.execute(select(AttachmentBlob.item_id).limit(1))
+            return True
+        except Exception:
+            return False

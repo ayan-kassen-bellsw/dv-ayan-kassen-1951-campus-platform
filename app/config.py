@@ -70,10 +70,12 @@ def load_settings() -> Settings:
         raise ConfigError("DB_URL must be PostgreSQL (postgresql+psycopg://) or MySQL (mysql+pymysql://)")
 
     backend = (env("STORAGE_BACKEND", "local") or "local").lower()
-    if backend not in ("local", "s3", "gcs"):
-        raise ConfigError("STORAGE_BACKEND must be local, s3 or gcs")
+    if backend not in ("local", "s3", "gcs", "database"):
+        raise ConfigError("STORAGE_BACKEND must be local, s3, gcs or database")
+    if backend == "database" and not db_url.startswith(("postgresql", "sqlite")):
+        raise ConfigError("Database attachments require PostgreSQL or SQLite")
     bucket = env("BUCKET", "./data/uploads" if backend == "local" else "") or ""
-    if not bucket:
+    if not bucket and backend != "database":
         raise ConfigError(f"BUCKET is required for STORAGE_BACKEND={backend}")
 
     try:

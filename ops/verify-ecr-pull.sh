@@ -32,9 +32,12 @@ config_digest=$(aws ecr batch-get-image --region "$region" --registry-id "$accou
   python3 -c '
 import json, re, sys
 images = json.load(sys.stdin)["images"]
-if len(images) != 1 or images[0]["imageId"]["imageDigest"] != sys.argv[1]:
+if not images or any(image["imageId"]["imageDigest"] != sys.argv[1] for image in images):
     sys.exit("ECR did not return the requested image")
-manifest = json.loads(images[0]["imageManifest"])
+manifests = {image["imageManifest"] for image in images}
+if len(manifests) != 1:
+    sys.exit("ECR returned inconsistent manifests for the same digest")
+manifest = json.loads(manifests.pop())
 config = manifest.get("config", {}).get("digest", "")
 if not re.fullmatch(r"sha256:[0-9a-f]{64}", config):
     sys.exit("Supply the linux/amd64 image manifest digest, including for multi-platform releases")

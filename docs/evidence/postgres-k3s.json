@@ -1,0 +1,23 @@
+{
+  "verified_at_utc": "2026-11-23T00:16:21+00:00",
+  "region": "us-east-1",
+  "workload": "dv-ayan-kassen-1951-postgres",
+  "worker": "ip-10-56-2-10.ec2.internal-384dac5f",
+  "statefulset_ready": true,
+  "service": "ClusterIP",
+  "volume": {
+    "status": "Bound",
+    "storage_class": "local-path",
+    "size": "2Gi"
+  },
+  "from_workstation": {
+    "public_ingress_tcp_5432": "unreachable",
+    "result": "TimeoutError"
+  },
+  "database": {
+    "admin_login": true,
+    "read_only_insert": "denied",
+    "read_write_drop_table": "denied",
+    "server_version_num": "170012"
+  }
+}

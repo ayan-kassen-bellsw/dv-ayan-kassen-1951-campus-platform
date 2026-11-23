@@ -1,2 +1,4 @@
 # Public password-policy test input in test_password_policy_configurable (never used as a credential).
 d84df01bd2a2fc7a1db4891fe3f74d6e89fa1ec5:tests/test_app.py:generic-api-key:100
+# Public example submitted only to the password policy checker in the original Ingress test.
+1306612c7c5a1c286bbbbc5d5b2bdb6855da21cd:.github/scripts/test-k8s-app.sh:generic-api-key:30

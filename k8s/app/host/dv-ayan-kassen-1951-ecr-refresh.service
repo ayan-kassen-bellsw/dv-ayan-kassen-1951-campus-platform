@@ -1,0 +1,19 @@
+[Unit]
+Description=Refresh the scholarship application's ECR image pull credentials
+Wants=network-online.target
+After=network-online.target k3s.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /usr/local/sbin/dv-ayan-kassen-1951-deploy-app refresh-pull
+TimeoutStartSec=90
+Restart=on-failure
+RestartSec=15min
+RuntimeDirectory=dv-ayan-kassen-1951-ecr-refresh
+Environment=HOME=/run/dv-ayan-kassen-1951-ecr-refresh
+Environment=AWS_REGION=us-east-1
+Environment=KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true

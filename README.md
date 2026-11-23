@@ -7,6 +7,7 @@
 A FastAPI service for recording scholarship applications. Each item is one
 application with a title, description and an optional supporting document.
 The local stack runs the API and PostgreSQL with Docker Compose.
+On k3s, Traefik routes requests to two application replicas. They share the PostgreSQL database for application records and supporting documents. See the [application deployment guide](docs/k3s-app.md) for release, verification and rollback commands.
 
 ## What the app does
 
@@ -125,7 +126,7 @@ secrets are mounted).
 | `DB_URL` | **yes** | `postgresql+psycopg://app_rw:${DB_PASSWORD}@postgres:5432/campus` | Database connection string. |
 | `DB_PASSWORD` | if `DB_URL` has `${DB_PASSWORD}` | from your secret manager | Filled into `DB_URL` and URL-encoded by the app. |
 | `CLICKHOUSE_URL` | no | unset | Leave unset for this project. |
-| `STORAGE_BACKEND` | no | `local` · `s3` · `gcs` | Where attachments go. |
+| `STORAGE_BACKEND` | no | `local` · `s3` · `gcs` · `database` | The Kubernetes deployment stores attachments in PostgreSQL so all replicas can serve the same file. |
 | `BUCKET` | for s3/gcs | `/app/data/uploads` for local Compose | Bucket name or local folder for application documents. |
 | `APP_NAME` | no | `Scholarship applications` | Shown on the home page. |
 | `APP_OWNER` | for course submission | Your name and full student ID | Shown on `/` and `/info`. |
