@@ -84,3 +84,17 @@ def test_destroy_removes_only_the_runtime_token(clients):
     manage("destroy", session, BUCKET, OWNER, REGION, PROJECT)
     s3.delete_object.assert_called_once_with(**TARGET, Key="cluster/agent-token")
     s3.delete_bucket.assert_called_once_with(**TARGET)
+
+
+@pytest.mark.parametrize("key", ["postgresql/campus-20261123.dump", "cluster/agent-token"])
+def test_backup_helper_never_deletes_objects(clients, key):
+    session, s3 = clients
+    name = f"{PROJECT}-backups-example"
+    s3.get_bucket_tagging.return_value = {
+        "TagSet": [tag if tag["Key"] != "Name" else {"Key": "Name", "Value": f"{PROJECT}-backups"} for tag in TAGS]
+    }
+    s3.list_objects_v2.return_value = {"Contents": [{"Key": key}]}
+    with pytest.raises(RuntimeError, match="objects remain"):
+        manage("destroy", session, name, OWNER, REGION, PROJECT, purpose="backups")
+    s3.delete_object.assert_not_called()
+    s3.delete_bucket.assert_not_called()

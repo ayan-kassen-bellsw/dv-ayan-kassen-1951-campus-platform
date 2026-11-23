@@ -94,7 +94,7 @@ run "learner_lab" {
       local.token_object_arn == "arn:aws:s3:::${var.learner_lab.bucket_name}/cluster/agent-token" &&
       aws_vpc_endpoint.bootstrap.vpc_endpoint_type == "Gateway" &&
       aws_vpc_endpoint.bootstrap.service_name == "com.amazonaws.us-east-1.s3" &&
-      length(jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement) == 3 &&
+      length(jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement) == 4 &&
       alltrue([for stmt in jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement :
         stmt.Effect == "Allow" && stmt.Principal == "*" &&
         stmt.Condition.ArnEquals["aws:PrincipalArn"] == "arn:aws:iam::123456789012:role/LabRole" &&
@@ -107,12 +107,40 @@ run "learner_lab" {
           stmt.Action == "s3:PutObject" && stmt.Resource == local.token_object_arn &&
           stmt.Condition.IpAddress["aws:VpcSourceIp"] == "10.56.1.10" &&
           stmt.Condition.IpAddress["aws:Ec2InstanceSourcePrivateIPv4"] == "10.56.1.10"
-        )) if stmt.Sid != "ReadECRLayersFromNodes"
+        )) if contains(["ReadBootstrapFromNodes", "PublishAgentTokenFromServer"], stmt.Sid)
         ]) && toset([for s in jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement : s.Sid]) == toset([
-        "ReadBootstrapFromNodes", "PublishAgentTokenFromServer", "ReadECRLayersFromNodes"
+        "ReadBootstrapFromNodes", "PublishAgentTokenFromServer", "ReadECRLayersFromNodes", "DatabaseAgentBackups"
       ])
     )
     error_message = "Both nodes may read the pinned release and token. Only the server may publish the token via the gateway."
+  }
+
+  assert {
+    condition = (
+      length(aws_s3_bucket.backups) == 0 && length(aws_kms_key.backups) == 0 &&
+      terraform_data.backup_bucket[0].input.bucket == "dv-ayan-kassen-1951-backups-ci" &&
+      output.backup_bucket_name == "dv-ayan-kassen-1951-backups-ci" &&
+      aws_s3_bucket_lifecycle_configuration.backups.bucket == output.backup_bucket_name &&
+      one(aws_s3_bucket_lifecycle_configuration.backups.rule).status == "Enabled" &&
+      one(one(aws_s3_bucket_lifecycle_configuration.backups.rule).filter).prefix == "postgresql/" &&
+      one(one(aws_s3_bucket_lifecycle_configuration.backups.rule).expiration).days == 7 &&
+      one(one(aws_s3_bucket_server_side_encryption_configuration.backups.rule).apply_server_side_encryption_by_default).sse_algorithm == "aws:kms" &&
+      aws_s3_bucket_public_access_block.backups.block_public_acls && aws_s3_bucket_public_access_block.backups.ignore_public_acls &&
+      aws_s3_bucket_public_access_block.backups.block_public_policy && aws_s3_bucket_public_access_block.backups.restrict_public_buckets &&
+      anytrue([for s in jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement : jsonencode(s) == jsonencode({
+        Sid       = "DatabaseAgentBackups"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = ["s3:GetObject", "s3:PutObject"]
+        Resource  = "arn:aws:s3:::dv-ayan-kassen-1951-backups-ci/postgresql/campus-*.dump"
+        Condition = {
+          ArnEquals    = { "aws:PrincipalArn" = "arn:aws:iam::123456789012:role/LabRole" }
+          StringEquals = { "aws:Ec2InstanceSourceVpc" = aws_vpc.project.id }
+          IpAddress    = { "aws:VpcSourceIp" = "10.56.2.10", "aws:Ec2InstanceSourcePrivateIPv4" = "10.56.2.10" }
+        }
+      })])
+    )
+    error_message = "The private encrypted backup bucket must expire archives after seven days and restrict node access to the database agent."
   }
 
   assert {

@@ -1,5 +1,7 @@
 infra/bootstrap/* text eol=lf
+infra/learner-readiness.tf text eol=lf
 .github/scripts/*.sh text eol=lf
 ops/*.sh text eol=lf
 k8s/postgres/*.sh text eol=lf
 k8s/postgres/*.sql text eol=lf
+k8s/postgres/host/* text eol=lf

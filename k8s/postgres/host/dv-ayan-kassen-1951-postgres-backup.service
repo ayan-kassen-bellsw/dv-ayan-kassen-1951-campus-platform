@@ -1,0 +1,17 @@
+[Unit]
+Description=Upload a PostgreSQL scholarship applications backup to S3
+Wants=network-online.target
+After=network-online.target k3s.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/dv-ayan-kassen-1951-postgres-backup/backup.sh
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+TimeoutStartSec=1h
+Restart=on-failure
+RestartSec=15min
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true

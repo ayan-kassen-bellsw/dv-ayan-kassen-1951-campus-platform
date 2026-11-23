@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up scholarship applications daily at 04:56 UTC
+
+[Timer]
+OnCalendar=*-*-* 04:56:00 UTC
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
