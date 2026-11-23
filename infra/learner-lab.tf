@@ -73,12 +73,11 @@ resource "terraform_data" "bootstrap_bucket" {
 }
 
 locals {
-  lab_node_ips = [local.server_ip, cidrhost(local.subnet_cidrs.private, 10)]
-
   # Both nodes use LabRole. Scope token writes to the server's issued credentials AND its ENI.
   lab_endpoint_policy = var.learner_lab == null ? null : jsonencode({
     Version = "2012-10-17"
     Statement = [
+      local.ecr_s3_read,
       {
         Sid       = "ReadBootstrapFromNodes"
         Effect    = "Allow"
@@ -89,8 +88,8 @@ locals {
           ArnEquals    = { "aws:PrincipalArn" = data.aws_iam_instance_profile.learner[0].role_arn }
           StringEquals = { "aws:Ec2InstanceSourceVpc" = aws_vpc.project.id }
           IpAddress = {
-            "aws:VpcSourceIp"                  = local.lab_node_ips
-            "aws:Ec2InstanceSourcePrivateIPv4" = local.lab_node_ips
+            "aws:VpcSourceIp"                  = local.node_ips
+            "aws:Ec2InstanceSourcePrivateIPv4" = local.node_ips
           }
         }
       },

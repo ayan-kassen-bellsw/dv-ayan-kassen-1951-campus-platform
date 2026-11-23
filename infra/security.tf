@@ -3,10 +3,18 @@ locals {
     ingress  = "Public k3s server running the ingress controller"
     app      = "Cluster nodes that run scholarship application pods"
     database = "Private PostgreSQL network interface"
+    registry = "Private ECR interface endpoints"
   }
 
   # These are new connections. AWS security groups allow their return traffic.
   private_flows = {
+    ecr = {
+      source      = "app"
+      destination = "registry"
+      protocol    = "tcp"
+      port        = 443
+      description = "Cluster nodes pulling images through ECR interface endpoints"
+    }
     k3s-api = {
       source      = "app"
       destination = "ingress"

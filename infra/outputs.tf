@@ -24,7 +24,7 @@ output "route_table_ids" {
 }
 
 output "security_group_ids" {
-  description = "Security group IDs keyed by ingress, app and database."
+  description = "Security group IDs keyed by ingress, app, database and registry."
   value       = { for name, group in aws_security_group.workload : name => group.id }
 }
 
@@ -46,4 +46,9 @@ output "server_public_ip" {
 output "bootstrap_bucket" {
   description = "Name of the private bucket for the pinned k3s release and its runtime agent token."
   value       = local.bootstrap_bucket_name
+}
+
+output "ecr_repository_url" {
+  description = "Private ECR repository URL for the scholarship application."
+  value       = aws_ecr_repository.app.repository_url
 }
