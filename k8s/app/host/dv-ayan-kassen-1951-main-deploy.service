@@ -1,0 +1,29 @@
+[Unit]
+Description=Deploy the latest protected main image to scholarship k3s
+After=network-online.target k3s.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=scholarship-cd
+Group=scholarship-cd
+RuntimeDirectory=dv-ayan-kassen-1951-main-deploy
+StateDirectory=dv-ayan-kassen-1951-main-deploy
+StateDirectoryMode=0700
+RuntimeDirectoryMode=0700
+Environment=HOME=/run/dv-ayan-kassen-1951-main-deploy
+Environment=AWS_REGION=us-east-1
+Environment=AWS_PAGER=
+EnvironmentFile=/etc/dv-ayan-kassen-1951-main-deploy/registry.env
+ExecStartPre=+/usr/bin/bash /usr/local/lib/dv-ayan-kassen-1951-main-deploy/main-deploy-token.sh
+ExecStart=/usr/bin/bash -euo pipefail -c 'aws ecr list-images --registry-id "$$ECR_REGISTRY_ID" --repository-name dv-ayan-kassen-1951-scholarship-applications --filter tagStatus=TAGGED --region us-east-1 --output json | /usr/bin/python3 /usr/local/lib/dv-ayan-kassen-1951-main-deploy/reconcile_main.py'
+ExecStopPost=+/usr/bin/rm -f -- /run/dv-ayan-kassen-1951-main-deploy-credentials/token
+TimeoutStartSec=7min
+UMask=0077
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+ProtectSystem=strict
+ProtectHome=true
+InaccessiblePaths=-/etc/rancher/k3s -/var/lib/rancher/k3s
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

@@ -1,0 +1,10 @@
+[Unit]
+Description=Check ECR for a new protected main release
+
+[Timer]
+OnBootSec=45s
+OnUnitInactiveSec=30s
+AccuracySec=2s
+
+[Install]
+WantedBy=timers.target

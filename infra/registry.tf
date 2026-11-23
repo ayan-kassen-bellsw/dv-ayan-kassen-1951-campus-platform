@@ -27,6 +27,30 @@ locals {
     },
   ]
 
+  # In Academy both nodes use LabRole. Match the server that received the IMDS
+  # credentials and the server ENI making the request through the private endpoint.
+  ecr_list_deployments = {
+    Sid      = "ListDeploymentImagesFromServer"
+    Effect   = "Allow"
+    Action   = ["ecr:ListImages"]
+    Resource = aws_ecr_repository.app.arn
+    Condition = {
+      ArnEquals = { "aws:PrincipalArn" = var.learner_lab == null ? aws_iam_role.node["server"].arn : data.aws_iam_instance_profile.learner[0].role_arn }
+      StringEquals = {
+        "aws:SourceVpc"            = aws_vpc.project.id
+        "aws:Ec2InstanceSourceVpc" = aws_vpc.project.id
+      }
+      IpAddress = {
+        "aws:VpcSourceIp"                  = local.server_ip
+        "aws:Ec2InstanceSourcePrivateIPv4" = local.server_ip
+      }
+    }
+  }
+  ecr_node_permissions = {
+    server = concat(local.ecr_pull_permissions, [local.ecr_list_deployments])
+    agent  = local.ecr_pull_permissions
+  }
+
   # ECR supplies presigned S3 URLs for layers. The signing identity belongs to ECR.
   ecr_s3_read = {
     Sid       = "ReadECRLayersFromNodes"
@@ -51,8 +75,11 @@ resource "aws_vpc_endpoint" "ecr" {
   security_group_ids  = [aws_security_group.workload["registry"].id]
 
   policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = [for permission in local.ecr_pull_permissions : merge(permission, { Principal = "*" })]
+    Version = "2012-10-17"
+    Statement = concat(
+      [for permission in local.ecr_pull_permissions : merge(permission, { Principal = "*" })],
+      each.key == "api" ? [merge(local.ecr_list_deployments, { Principal = "*" })] : []
+    )
   })
 
   tags = { Name = "${var.resource_prefix}-ecr-${each.key}" }

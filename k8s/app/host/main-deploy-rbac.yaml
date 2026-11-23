@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dv-ayan-kassen-1951-main-deploy
+  namespace: dv-ayan-kassen-1951
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dv-ayan-kassen-1951-main-deploy
+  namespace: dv-ayan-kassen-1951
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["dv-ayan-kassen-1951-app"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dv-ayan-kassen-1951-main-deploy
+  namespace: dv-ayan-kassen-1951
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dv-ayan-kassen-1951-main-deploy
+subjects:
+  - kind: ServiceAccount
+    name: dv-ayan-kassen-1951-main-deploy
+    namespace: dv-ayan-kassen-1951

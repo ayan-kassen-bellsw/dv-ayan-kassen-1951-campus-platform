@@ -5,3 +5,4 @@ ops/*.sh text eol=lf
 k8s/postgres/*.sh text eol=lf
 k8s/postgres/*.sql text eol=lf
 k8s/postgres/host/* text eol=lf
+k8s/app/host/* text eol=lf

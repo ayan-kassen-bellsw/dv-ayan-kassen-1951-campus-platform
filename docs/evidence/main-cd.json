@@ -1,0 +1,22 @@
+{
+  "verified_at_utc": "2026-11-23T06:40:49Z",
+  "environment": "AWS Academy Learner Lab, us-east-1",
+  "source_sha": "9c3af99b876acaa050397ef70138ad9fbe93fc07",
+  "ci_run": "https://github.com/ayan-kassen-bellsw/dv-ayan-kassen-1951-campus-platform/actions/runs/45123363871",
+  "publication_attempt": "https://github.com/ayan-kassen-bellsw/dv-ayan-kassen-1951-campus-platform/actions/runs/45123891483/attempts/2",
+  "publication_result": "success",
+  "marker": "deploy-main-24-9c3af99b876acaa050397ef70138ad9fbe93fc07",
+  "trigger": "Operator ran the workflow marker step for the already merged main SHA. The installed k3s service applied it automatically.",
+  "image_digest": "sha256:d6fd62cc65f68aa1f4e15a018c67b2ace523e167f6e3e2b801a2932633c927ca",
+  "image_compressed_bytes": 84807077,
+  "version_from_ingress": "main-24",
+  "replicas_returning_source_sha": [
+    "dv-ayan-kassen-1951-app-dfd9d59f5-5sfmm",
+    "dv-ayan-kassen-1951-app-dfd9d59f5-9jbpl"
+  ],
+  "readiness_from_ingress": {
+    "db": true,
+    "storage": true
+  },
+  "temporary_ssh_rules_remaining": 0
+}

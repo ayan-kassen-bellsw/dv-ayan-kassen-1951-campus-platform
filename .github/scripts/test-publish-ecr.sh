@@ -17,6 +17,21 @@ set -euo pipefail
 method=GET
 ref=${!#}
 file="$REGISTRY_FIXTURE/${ref##*/}"
+case $ref in
+  http://ingress.test/readyz) echo '{"ready":true,"checks":{"db":true,"storage":true}}'; exit ;;
+  http://ingress.test/info)
+    calls=$(wc -l < "$REGISTRY_FIXTURE/probes")
+    case $calls in
+      0) sha=$REVISION; host=pod-a ;;
+      1) sha=old; host=pod-old ;;
+      2|3) sha=$REVISION; host=pod-b ;;
+      4) sha=$REVISION; host=pod-a ;;
+      *) exit 1 ;;
+    esac
+    echo "$host" >> "$REGISTRY_FIXTURE/probes"
+    printf '{"git_sha":"%s","hostname":"%s"}\n' "$sha" "$host"
+    exit ;;
+esac
 while (( $# > 0 )); do
   case $1 in
     --output) out=$2; shift ;;
@@ -49,6 +64,7 @@ publish=(bash "$(dirname "$0")/publish-ecr.sh" '012345678901.dkr.ecr.us-east-1.a
 if "${publish[@]}" v0.1.0; then exit 1; fi
 if LOCAL_REVISION=bad "${publish[@]}"; then exit 1; fi
 if FAIL_HTTP=401 "${publish[@]}"; then exit 1; fi
+if FAIL_HTTP=403 "${publish[@]}"; then exit 1; fi
 "${publish[@]}"
 "${publish[@]}"
 [[ $(wc -l < "$REGISTRY_FIXTURE/pushes") == 1 ]]
@@ -58,4 +74,40 @@ cmp "$REGISTRY_FIXTURE/$REVISION" "$REGISTRY_FIXTURE/v0.1.0"
 printf 'other digest' > "$REGISTRY_FIXTURE/v1.0.0"
 if "${publish[@]}" v1.0.0; then exit 1; fi
 if "${publish[@]}" v01.0.0; then exit 1; fi
-echo "ECR publication and immutable promotion checks passed."
+
+# A retry may reuse the marker; earlier CIs and tags for another SHA cannot promote it.
+marker="deploy-main-52-$REVISION"
+if "${publish[@]}" "deploy-main-52-${REVISION//0/1}"; then exit 1; fi
+if "${publish[@]}" "deploy-main-00-$REVISION"; then exit 1; fi
+cat > "$work/bin/git" <<'BASH'
+#!/usr/bin/env bash
+[[ "$*" == 'ls-remote --exit-code origin refs/heads/main' ]] || exit 2
+printf '%s\trefs/heads/main\n' "$(cat "$REGISTRY_FIXTURE/main")"
+BASH
+cat > "$work/bin/sleep" <<'BASH'
+#!/usr/bin/env bash
+# Abort a broken poll loop rather than waiting for the real ten-minute timeout.
+[[ $(wc -l < "$REGISTRY_FIXTURE/probes") -lt 5 ]]
+BASH
+chmod +x "$work/bin/git" "$work/bin/sleep"
+export SOURCE_SHA=$REVISION CI_RUN_NUMBER=52 K3S_APP_URL=http://ingress.test
+export ECR_REGISTRY=012345678901.dkr.ecr.us-east-1.amazonaws.com
+export GITHUB_OUTPUT="$work/outputs"
+deploy=(bash "$(dirname "$0")/deploy-main.sh")
+printf '%s\n' superseded > "$REGISTRY_FIXTURE/main"
+"${deploy[@]}" mark
+[[ ! -f "$GITHUB_OUTPUT" && ! -f "$REGISTRY_FIXTURE/$marker" ]]
+printf '%s\n' "$REVISION" > "$REGISTRY_FIXTURE/main"
+if K3S_APP_URL='http://user@ingress.test' "${deploy[@]}" mark; then exit 1; fi
+"${deploy[@]}" mark
+"${deploy[@]}" mark
+cmp "$REGISTRY_FIXTURE/$REVISION" "$REGISTRY_FIXTURE/$marker"
+[[ $(head -n 1 "$GITHUB_OUTPUT") == marked=true ]]
+: > "$REGISTRY_FIXTURE/probes"
+"${deploy[@]}" verify
+[[ $(wc -l < "$REGISTRY_FIXTURE/probes") -eq 5 ]]
+printf '%s\n' superseded > "$REGISTRY_FIXTURE/main"
+"${deploy[@]}" verify
+[[ $(wc -l < "$REGISTRY_FIXTURE/probes") -eq 5 ]]
+bash "$(dirname "$0")/test-refresh-ecr-publisher.sh"
+echo "ECR publication, immutable promotion and main deployment checks passed."
