@@ -13,5 +13,3 @@ configMapGenerator:
       - DB_URL=postgresql+psycopg://app_rw:${DB_PASSWORD}@dv-ayan-kassen-1951-postgres:5432/campus
       - LOG_FORMAT=json
       - STORAGE_BACKEND=database
-      - PASSWORD_MIN_LENGTH=16
-      - PASSWORD_REQUIRE_SYMBOL=false

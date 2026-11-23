@@ -27,6 +27,8 @@ curl -fsS --retry 30 --retry-all-errors --retry-delay 2 --retry-max-time 90 "$K3
   jq -e '.ready and .checks.db and .checks.storage'
 curl -fsS "$K3D_INGRESS_URL/info" |
   jq -e --arg sha "$GIT_SHA" '.git_sha == $sha and .storage_backend == "database" and .db_engine == "postgresql"'
+curl -fsS --json '{"password":"Scholar2026Award"}' "$K3D_INGRESS_URL/api/admin/check-password" |
+  jq -e '.ok and .min_length == 16 and .require_symbol == false'
 [[ $("${k[@]}" get deployment "$app" -o jsonpath='{.status.readyReplicas}') -ge 2 ]]
 "${k[@]}" get hpa "$app" -o json | jq -e '.spec.minReplicas == 2 and .spec.metrics[0].resource.target.averageUtilization == 70'
 
