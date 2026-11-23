@@ -19,7 +19,9 @@ trap cleanup EXIT
 # Run the production scripts with the real CRI and PostgreSQL on the k3d worker.
 cat > "$work/k3s" <<'EOF'
 #!/usr/bin/env bash
-exec docker exec -i "$BACKUP_TEST_WORKER" k3s "$@"
+# The k3d node image exposes crictl as its own executable.
+[[ $1 == crictl ]] || exit 2
+exec docker exec -i "$BACKUP_TEST_WORKER" "$@"
 EOF
 chmod 700 "$work/k3s"
 export PATH="$work:$PATH"
