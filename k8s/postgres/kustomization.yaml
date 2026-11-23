@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: dv-ayan-kassen-1951
+resources:
+  - namespace.yaml
+  - service.yaml
+  - statefulset.yaml
+  - network-policy.yaml
+configMapGenerator:
+  - name: dv-ayan-kassen-1951-postgres-bootstrap
+    files:
+      - validate-passwords.sh
+      - reconcile.sh
+      - schema.sql

@@ -57,6 +57,8 @@ GitHub Actions runs the following checks on pull requests and pushes to `main`.
 
 The [ECR guide](docs/ecr.md) covers publishing that same tested image from `main`, giving a release its immutable version tag, and verifying a pull from the private agent.
 
+The [PostgreSQL guide](docs/postgres.md) covers deployment on the private worker, credential rotation, and the k3s test that verifies role permissions and persistence across Pod replacement.
+
 ## AWS network
 
 For AWS Academy, follow the [Learner Lab deployment guide](docs/learner-lab.md). It covers temporary credentials, the existing `LabInstanceProfile`, and how to use the same Terraform state on the next run. The [recorded Kubernetes API result](docs/evidence/k3s-ready.json) shows both nodes `Ready` in `us-east-1`.
