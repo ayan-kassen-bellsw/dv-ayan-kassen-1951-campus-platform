@@ -95,6 +95,7 @@ resource "aws_vpc_endpoint" "bootstrap" {
   policy = var.learner_lab != null ? local.lab_endpoint_policy : jsonencode({
     Version = "2012-10-17"
     Statement = [
+      local.ecr_s3_read,
       {
         Sid       = "ReadBootstrap"
         Effect    = "Allow"

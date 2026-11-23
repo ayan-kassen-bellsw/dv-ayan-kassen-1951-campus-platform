@@ -18,6 +18,7 @@ data "aws_ssm_parameter" "al2023" {
 locals {
   node_ami_id      = var.ami_id != null ? var.ami_id : data.aws_ssm_parameter.al2023[0].insecure_value
   server_ip        = cidrhost(local.subnet_cidrs.public, 10)
+  node_ips         = [local.server_ip, cidrhost(local.subnet_cidrs.private, 10)]
   node_roles       = toset(["server", "agent"])
   custom_iam_roles = var.learner_lab == null ? local.node_roles : toset([])
   node_user_data = {
@@ -53,7 +54,7 @@ resource "aws_iam_role_policy" "bootstrap" {
   role = aws_iam_role.node[each.key].id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Sid      = "ReadPinnedRelease"
         Effect   = "Allow"
@@ -79,7 +80,7 @@ resource "aws_iam_role_policy" "bootstrap" {
           }
         }
       },
-    ]
+    ], local.ecr_pull_permissions)
   })
 }
 

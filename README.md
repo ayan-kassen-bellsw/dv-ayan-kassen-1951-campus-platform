@@ -55,6 +55,8 @@ GitHub Actions runs the following checks on pull requests and pushes to `main`.
 - CI builds the application image and starts it with PostgreSQL using Docker Compose. It checks readiness, saves a scholarship application, and tests the password endpoint with 15- and 16-character inputs. Trivy scans the built image and fails the check on HIGH or CRITICAL findings.
 - The Terraform job checks formatting, validates the configuration and scans it with Trivy. Offline plans verify both the standard AWS and Learner Lab configurations, including the two EC2 nodes and their bootstrap permissions.
 
+The [ECR guide](docs/ecr.md) covers publishing that same tested image from `main`, giving a release its immutable version tag, and verifying a pull from the private agent.
+
 ## AWS network
 
 For AWS Academy, follow the [Learner Lab deployment guide](docs/learner-lab.md). It covers temporary credentials, the existing `LabInstanceProfile`, and how to use the same Terraform state on the next run. The [recorded Kubernetes API result](docs/evidence/k3s-ready.json) shows both nodes `Ready` in `us-east-1`.
@@ -75,7 +77,8 @@ Both subnets default to `us-east-1a`. Both nodes use the `app` security group. T
 | `app` | `ingress` | TCP 6443 for the k3s API |
 | `app` | `app` | UDP 8472 for the overlay and TCP 10250 for kubelet metrics |
 | `app` | `database` | TCP 5432 for PostgreSQL |
-| `app` | Regional S3 prefix list | TCP 443 for bootstrap artifacts and the agent join token |
+| `app` | Regional S3 prefix list | TCP 443 for bootstrap artifacts, the agent join token and ECR image layers |
+| `app` | `registry` | TCP 443 to the private ECR API and Docker endpoints |
 
 The security groups keep SSH and the Kubernetes API closed to the internet. The private agent obtains its installation files through the S3 gateway endpoint. The cluster can start without a NAT gateway.
 

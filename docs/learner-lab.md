@@ -19,6 +19,8 @@ python -c 'import boto3'
 
 The lab supplies the EC2 instance profile for both nodes. Its S3 gateway endpoint policy restricts bootstrap access to the nodes in the project VPC. Only the server can publish the agent token through the endpoint. S3 uses SSE-KMS with the AWS-managed `aws/s3` key. The lab forbids the Object Lock configuration lookup performed by the AWS provider's general bucket resource. A Terraform-managed Python helper creates the dedicated bucket using basic S3 operations. Terraform configures its encryption, public access block, policy and release objects.
 
+The current configuration also plans a private image repository and two hourly billed ECR interface endpoints. See the [registry guide](ecr.md) for costs, publishing and the private-agent pull check.
+
 ## Select the state and inputs
 
 **For a new deployment**, choose a private directory outside the checkout. Create the input file once and keep it alongside the state. The random suffix makes the S3 name globally unique.
@@ -92,4 +94,4 @@ terraform -chdir=infra plan -destroy -state="$STATE" -var-file="$VARS" -out="$DE
 terraform -chdir=infra apply -state="$STATE" "$DESTROY_PLAN"
 ```
 
-The helper checks ownership and project tags before deleting the dedicated bootstrap bucket. Unexpected objects or bucket versioning cause deletion to stop for review. Keep application attachments and backups in their own buckets.
+The helper checks ownership and project tags before deleting the dedicated bootstrap bucket. Unexpected objects or bucket versioning cause deletion to stop for review. Keep application attachments and backups in their own buckets. ECR refuses to destroy a nonempty image repository. When retiring the project, archive any images you need and remove the project's image digests before applying the final destroy plan.

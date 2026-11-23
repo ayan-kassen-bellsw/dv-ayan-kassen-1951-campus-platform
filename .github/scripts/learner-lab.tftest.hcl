@@ -27,6 +27,26 @@ run "learner_lab" {
     override_during = plan
     values          = { id = "vpce-0123456789abcdef0" }
   }
+  override_resource {
+    target          = aws_ecr_repository.app
+    override_during = plan
+    values          = { arn = "arn:aws:ecr:us-east-1:123456789012:repository/dv-ayan-kassen-1951-scholarship-applications" }
+  }
+  override_resource {
+    target          = aws_subnet.project["private"]
+    override_during = plan
+    values          = { id = "subnet-0123456789abcdef0" }
+  }
+  override_resource {
+    target          = aws_security_group.workload["registry"]
+    override_during = plan
+    values          = { id = "sg-0123456789abcdef0" }
+  }
+  override_resource {
+    target          = aws_security_group.workload["app"]
+    override_during = plan
+    values          = { id = "sg-0123456789abcdef1" }
+  }
 
   assert {
     condition = (
@@ -74,7 +94,7 @@ run "learner_lab" {
       local.token_object_arn == "arn:aws:s3:::${var.learner_lab.bucket_name}/cluster/agent-token" &&
       aws_vpc_endpoint.bootstrap.vpc_endpoint_type == "Gateway" &&
       aws_vpc_endpoint.bootstrap.service_name == "com.amazonaws.us-east-1.s3" &&
-      length(jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement) == 2 &&
+      length(jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement) == 3 &&
       alltrue([for stmt in jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement :
         stmt.Effect == "Allow" && stmt.Principal == "*" &&
         stmt.Condition.ArnEquals["aws:PrincipalArn"] == "arn:aws:iam::123456789012:role/LabRole" &&
@@ -87,10 +107,58 @@ run "learner_lab" {
           stmt.Action == "s3:PutObject" && stmt.Resource == local.token_object_arn &&
           stmt.Condition.IpAddress["aws:VpcSourceIp"] == "10.56.1.10" &&
           stmt.Condition.IpAddress["aws:Ec2InstanceSourcePrivateIPv4"] == "10.56.1.10"
-        ))
-      ]) && toset([for s in jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement : s.Action]) == toset(["s3:GetObject", "s3:PutObject"])
+        )) if stmt.Sid != "ReadECRLayersFromNodes"
+        ]) && toset([for s in jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement : s.Sid]) == toset([
+        "ReadBootstrapFromNodes", "PublishAgentTokenFromServer", "ReadECRLayersFromNodes"
+      ])
     )
     error_message = "Both nodes may read the pinned release and token. Only the server may publish the token via the gateway."
+  }
+
+  assert {
+    condition = (
+      aws_ecr_repository.app.name == "dv-ayan-kassen-1951-scholarship-applications" &&
+      aws_ecr_repository.app.image_tag_mutability == "IMMUTABLE" &&
+      one(aws_ecr_repository.app.image_scanning_configuration).scan_on_push &&
+      one(aws_ecr_repository.app.encryption_configuration).encryption_type == "KMS" &&
+      toset(keys(aws_vpc_endpoint.ecr)) == toset(["api", "dkr"]) &&
+      alltrue([for service, ep in aws_vpc_endpoint.ecr :
+        ep.service_name == "com.amazonaws.us-east-1.ecr.${service}" && ep.vpc_endpoint_type == "Interface" &&
+        ep.private_dns_enabled && ep.subnet_ids == toset([aws_subnet.project["private"].id]) &&
+        ep.security_group_ids == toset([aws_security_group.workload["registry"].id]) &&
+        length(jsondecode(ep.policy).Statement) == 2 &&
+        alltrue([for s in jsondecode(ep.policy).Statement :
+          s.Effect == "Allow" && s.Principal == "*" && (s.Sid == "RegistryLogin" ?
+            (s.Resource == "*" && toset(s.Action) == toset(["ecr:GetAuthorizationToken"])) :
+            (s.Sid == "ReadAppImage" && s.Resource == aws_ecr_repository.app.arn &&
+          toset(s.Action) == toset(["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"])))
+        ]) && toset([for s in jsondecode(ep.policy).Statement : s.Sid]) == toset(["RegistryLogin", "ReadAppImage"])
+      ])
+    )
+    error_message = "Both private ECR endpoints must serve only login and pulls from the immutable, scanned application repository."
+  }
+
+  assert {
+    condition = (
+      aws_vpc_security_group_ingress_rule.private["ecr"].security_group_id == aws_security_group.workload["registry"].id &&
+      aws_vpc_security_group_ingress_rule.private["ecr"].referenced_security_group_id == aws_security_group.workload["app"].id &&
+      aws_vpc_security_group_egress_rule.private["ecr"].security_group_id == aws_security_group.workload["app"].id &&
+      aws_vpc_security_group_egress_rule.private["ecr"].referenced_security_group_id == aws_security_group.workload["registry"].id &&
+      alltrue([for rule in [aws_vpc_security_group_ingress_rule.private["ecr"], aws_vpc_security_group_egress_rule.private["ecr"]] :
+        rule.ip_protocol == "tcp" && rule.from_port == 443 && rule.to_port == 443
+      ]) &&
+      anytrue([for s in jsondecode(aws_vpc_endpoint.bootstrap.policy).Statement :
+        jsonencode(s) == jsonencode({
+          Sid       = "ReadECRLayersFromNodes"
+          Effect    = "Allow"
+          Principal = "*"
+          Action    = "s3:GetObject"
+          Resource  = "arn:aws:s3:::prod-us-east-1-starport-layer-bucket/*"
+          Condition = { IpAddress = { "aws:VpcSourceIp" = ["10.56.1.10", "10.56.2.10"] } }
+        })
+      ])
+    )
+    error_message = "Allow HTTPS from the node group to ECR and presigned layer downloads only from the two node addresses."
   }
 
   assert {

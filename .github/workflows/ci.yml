@@ -70,7 +70,9 @@ jobs:
           persist-credentials: false
       - name: Build the application image used by Compose
         id: build
-        run: docker build --pull --tag campus-app:dev .
+        run: docker build --pull --platform linux/amd64 --provenance=false --label "org.opencontainers.image.revision=$GITHUB_SHA" --tag campus-app:dev .
+      - name: Check immutable publication and release promotion offline
+        run: bash .github/scripts/test-publish-ecr.sh
       - name: Verify PostgreSQL persistence and the HTTP password policy
         run: bash .github/scripts/compose-smoke.sh
       - name: Scan the final image for HIGH and CRITICAL vulnerabilities
@@ -78,6 +80,17 @@ jobs:
         run: |
           bash .github/scripts/install-trivy.sh
           "$RUNNER_TEMP/trivy" image --image-src docker --scanners vuln --severity HIGH,CRITICAL --exit-code 1 campus-app:dev
+      - name: Save the verified image for ECR publication
+        if: vars.ECR_PUBLISH_ENABLED == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker save -o "$RUNNER_TEMP/app.tar" campus-app:dev
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: vars.ECR_PUBLISH_ENABLED == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: app-${{ github.sha }}
+          path: ${{ runner.temp }}/app.tar
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
 
   terraform:
     runs-on: ubuntu-latest

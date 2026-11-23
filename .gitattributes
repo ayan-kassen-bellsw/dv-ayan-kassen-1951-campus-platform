@@ -1,2 +1,3 @@
 infra/bootstrap/* text eol=lf
 .github/scripts/*.sh text eol=lf
+ops/*.sh text eol=lf
