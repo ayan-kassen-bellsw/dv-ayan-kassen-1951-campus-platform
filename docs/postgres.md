@@ -1,6 +1,6 @@
 # Scholarship applications database
 
-PostgreSQL 17 runs as a single StatefulSet on a worker in the `dv-ayan-kassen-1951` namespace. The client Service has a cluster-only address at `dv-ayan-kassen-1951-postgres:5432`. A NetworkPolicy admits TCP 5432 from application Pods labeled `app.kubernetes.io/name=scholarship-applications` in that namespace. The cluster must enforce NetworkPolicy for this rule to take effect.
+PostgreSQL 17 runs as a single StatefulSet on a worker in the `dv-ayan-kassen-1951` namespace. The client Service has a cluster-only address at `dv-ayan-kassen-1951-postgres:5432`. A NetworkPolicy admits TCP 5432 from the main and production application Pods in that namespace. Their `app.kubernetes.io/name` label is `scholarship-applications` or `scholarship-applications-prod`. The cluster must enforce NetworkPolicy for this rule to take effect.
 
 The StatefulSet requests a 2 GiB ReadWriteOnce claim from the default StorageClass. K3s local-path storage keeps the data on the selected worker when the Pod restarts. Losing that worker or its disk requires restoring a backup. The database has one replica. Its PVC is retained when the StatefulSet is deleted.
 

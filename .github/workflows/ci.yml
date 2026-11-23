@@ -134,5 +134,6 @@ jobs:
           export GIT_SHA="$GITHUB_SHA" APP_VERSION=ci APP_OWNER="Scholarship CI"
           export APP_IMAGE="123456789012.dkr.ecr.us-east-1.amazonaws.com/dv-ayan-kassen-1951-scholarship-applications@sha256:$(printf '%064d' 0)"
           bash ops/deploy-app.sh render > "$RUNNER_TEMP/k8s-manifests/app.yaml"
+          cp k8s/app/prod/route.yaml k8s/app/host/main-deploy-rbac.yaml "$RUNNER_TEMP/k8s-manifests/"
           "$RUNNER_TEMP/trivy" config --severity HIGH,CRITICAL --exit-code 1 \
             --ignore-policy .github/scripts/postgres-trivy.rego "$RUNNER_TEMP/k8s-manifests"

@@ -1,0 +1,30 @@
+{
+  "verified_at_utc": "2026-11-23T07:12:50Z",
+  "scope": "Pre-release setup, before the first production tag approval",
+  "github": {
+    "environment": "prod",
+    "required_reviewers": [
+      "ayan-kassen-bellsw"
+    ],
+    "admin_bypass": false,
+    "deployment_branches": [
+      "main"
+    ]
+  },
+  "k3s": {
+    "separate_prod_deployment": "dv-ayan-kassen-1951-prod",
+    "prod_host": "prod.scholarships.test",
+    "prod_desired_replicas": 0,
+    "prod_ready_replicas": 0,
+    "prod_info_http_status": 503,
+    "main_version": "main-26",
+    "main_sha": "598ad2e535ec9f4d75db0447b51f922868543843",
+    "main_ready_replicas": 2,
+    "main_readiness": {
+      "db": true,
+      "storage": true
+    },
+    "deployer_service_result": "success"
+  },
+  "remaining_ssh_rules": 0
+}

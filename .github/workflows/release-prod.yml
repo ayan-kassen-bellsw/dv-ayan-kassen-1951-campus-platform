@@ -1,0 +1,89 @@
+name: Release to prod
+run-name: Review ${{ github.event.workflow_run.display_title }}
+
+on:
+  workflow_run:
+    workflows: [ECR release tag]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  TAG_REF: ${{ github.event.workflow_run.display_title }}
+  SIGNAL_BRANCH: ${{ github.event.workflow_run.head_branch }}
+  SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+  TAG_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+
+jobs:
+  validate:
+    if: >-
+      vars.ECR_PUBLISH_ENABLED == 'true' && github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.path == '.github/workflows/ecr-tag.yml' &&
+      startsWith(github.event.workflow_run.display_title, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ref.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: ref
+        run: bash .github/scripts/resolve-prod-tag.sh
+      - name: Require a configured prod reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/environments/prod" |
+            jq -e 'any(.protection_rules[]; .type == "required_reviewers" and (.reviewers | length > 0))'
+
+  approve:
+    name: Approve ${{ needs.validate.outputs.version }} at ${{ github.event.workflow_run.head_sha }}
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - run: echo "Production release approved."
+
+  publish:
+    needs: approve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ecr-publish
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: ref
+        name: Recheck the exact tag after approval
+        run: bash .github/scripts/resolve-prod-tag.sh
+      - name: Verify the recorded prod approval for this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/approvals" |
+            jq -e 'any(.[]; (.state | ascii_downcase) == "approved" and any(.environments[]; .name == "prod"))'
+      - name: Promote the approved SHA and signal the prod deployment
+        env:
+          ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+          ECR_PUSH_PASSWORD: ${{ secrets.ECR_PUSH_PASSWORD }}
+          VERSION: ${{ steps.ref.outputs.version }}
+          MARKER: ${{ steps.ref.outputs.marker }}
+        run: |
+          : "${ECR_REGISTRY:?}" "${ECR_PUSH_PASSWORD:?Refresh the ecr-publish credential}"
+          echo "::add-mask::$ECR_REGISTRY"
+          image="$ECR_REGISTRY/dv-ayan-kassen-1951-scholarship-applications"
+          bash .github/scripts/publish-ecr.sh "$image" "$SOURCE_SHA" "$VERSION"
+          bash .github/scripts/publish-ecr.sh "$image" "$SOURCE_SHA" "$MARKER"
+      - name: Check the approved release on two prod replicas
+        env:
+          RELEASE_VERSION: ${{ steps.ref.outputs.version }}
+          K3S_APP_URL: ${{ vars.K3S_APP_URL }}
+        run: bash .github/scripts/verify-ingress.sh prod

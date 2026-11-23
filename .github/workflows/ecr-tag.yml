@@ -1,4 +1,5 @@
 name: ECR release tag
+run-name: ${{ github.event.created && !github.event.deleted && github.ref || 'Ignored tag update' }}
 
 on:
   push:
@@ -8,8 +9,8 @@ permissions: {}
 
 jobs:
   signal:
-    if: '!github.event.deleted'
+    if: github.event.created && !github.event.deleted
     runs-on: ubuntu-latest
     steps:
       - name: Signal the publisher on the default branch
-        run: echo "The publisher resolves release tags against protected main."
+        run: echo "The default-branch release workflow verifies this tag and waits for prod approval."
