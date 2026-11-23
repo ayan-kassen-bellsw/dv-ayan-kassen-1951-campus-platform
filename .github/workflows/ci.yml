@@ -63,7 +63,7 @@ jobs:
 
   image:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -75,6 +75,8 @@ jobs:
         run: bash .github/scripts/test-publish-ecr.sh
       - name: Verify PostgreSQL persistence and the HTTP password policy
         run: bash .github/scripts/compose-smoke.sh
+      - name: Verify PostgreSQL roles and PVC persistence on k3s
+        run: bash .github/scripts/test-k3s.sh .github/scripts/test-k8s-postgres.sh
       - name: Scan the final image for HIGH and CRITICAL vulnerabilities
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
@@ -121,3 +123,9 @@ jobs:
           "$RUNNER_TEMP/trivy" config --tf-vars "$RUNNER_TEMP/learner.tfvars" --severity HIGH,CRITICAL --exit-code 1 infra
       - name: Verify standard and Learner Lab Terraform plans and k3s bootstrap
         run: bash .github/scripts/terraform-plan.sh
+      - name: Scan the rendered PostgreSQL manifests
+        run: |
+          mkdir -p "$RUNNER_TEMP/k8s-manifests"
+          kubectl kustomize k8s/postgres > "$RUNNER_TEMP/k8s-manifests/postgres.yaml"
+          "$RUNNER_TEMP/trivy" config --severity HIGH,CRITICAL --exit-code 1 \
+            --ignore-policy .github/scripts/postgres-trivy.rego "$RUNNER_TEMP/k8s-manifests"
