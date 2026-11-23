@@ -3,10 +3,10 @@ set -euo pipefail
 umask 077
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
-[[ $# == 2 || $# == 3 ]] || fail "Usage: $0 <ECR image URI> <full commit SHA> [vMAJOR.MINOR.PATCH]"
+[[ $# == 2 || $# == 3 ]] || fail "Usage: $0 <ECR image URI> <full commit SHA> [vMAJOR.MINOR.PATCH|deploy-main-<run>-<SHA>]"
 image=$1
 revision=$2
-version=${3:-}
+tag=${3:-}
 registry=${image%%/*}
 repository=${image#*/}
 [[ "$registry" =~ ^[0-9]{12}\.dkr\.ecr\.us-east-1\.amazonaws\.com$ &&
@@ -16,7 +16,9 @@ if [[ $# == 3 ]]; then
   number='(0|[1-9][0-9]*)'
   identifier="($number|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
   semver="^v$number\.$number\.$number(-$identifier(\.$identifier)*)?$"
-  [[ "$version" =~ $semver && ${#version} -le 128 ]] || fail "Expected a SemVer tag compatible with Docker, e.g. v1.2.3 or v1.2.3-rc.1"
+  marker="^deploy-main-[1-9][0-9]*-$revision$"
+  [[ ${#tag} -le 128 && ( "$tag" =~ $semver || "$tag" =~ $marker ) ]] ||
+    fail "Expected a SemVer release tag or a main deployment marker for this SHA"
 fi
 
 work=$(mktemp -d)
@@ -44,20 +46,21 @@ fetch_manifest() {
   case $status in
     200) return 0 ;;
     404) return 1 ;;
-    *) fail "ECR returned HTTP $status for $1. Check the repository and renew expired registry credentials." ;;
+    401|403) fail "ECR denied the manifest read for $1 (HTTP $status). Refresh the ecr-publish environment's ECR_PUSH_PASSWORD from an active Learner Lab session; verify the registry account, region and ecr:BatchGetImage permission if the retry fails." ;;
+    *) fail "ECR returned HTTP $status reading the manifest for $1." ;;
   esac
 }
 
 if ! fetch_manifest "$revision" "$work/image.json"; then
-  if [[ -n "$version" ]]; then
+  if [[ -n "$tag" ]]; then
     # A tag can arrive while the CI and publisher for its main commit are running.
-    if [[ ${GITHUB_ACTIONS:-} == true ]]; then
+    if [[ $tag == v* && ${GITHUB_ACTIONS:-} == true ]]; then
       for ((attempt=0; attempt<60; attempt++)); do
         sleep 15
         if fetch_manifest "$revision" "$work/image.json"; then break; fi
       done
     fi
-    fetch_manifest "$revision" "$work/image.json" || fail "Publish the verified SHA image before promoting $version"
+    fetch_manifest "$revision" "$work/image.json" || fail "Publish the verified SHA image before promoting $tag"
   else
     built_revision=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' campus-app:dev)
     [[ "$built_revision" == "$revision" ]] || fail "The local image revision does not match the requested commit"
@@ -71,15 +74,15 @@ if ! fetch_manifest "$revision" "$work/image.json"; then
 fi
 
 digest="sha256:$(sha256sum "$work/image.json" | cut -d ' ' -f 1)"
-if [[ -n "$version" ]]; then
-  if ! fetch_manifest "$version" "$work/version.json"; then
+if [[ -n "$tag" ]]; then
+  if ! fetch_manifest "$tag" "$work/tag.json"; then
     media_type=$(python3 -c 'import json, sys; print(json.load(sys.stdin)["mediaType"])' < "$work/image.json")
     [[ ",$accept," == *",$media_type,"* ]] || fail "Unsupported ECR manifest media type"
-    # Register the exact manifest bytes under the release tag; layers are already in ECR.
+    # Both release tags and deployment markers point at the exact SHA manifest.
     status=$("${request[@]}" --header "Content-Type: $media_type" --data-binary "@$work/image.json" \
-      --request PUT --output /dev/null --write-out '%{http_code}' "$api/$version")
-    fetch_manifest "$version" "$work/version.json" || fail "ECR did not publish $version (HTTP $status)"
+      --request PUT --output /dev/null --write-out '%{http_code}' "$api/$tag")
+    fetch_manifest "$tag" "$work/tag.json" || fail "ECR did not publish $tag (HTTP $status)"
   fi
-  cmp -s "$work/image.json" "$work/version.json" || fail "The immutable $version tag already refers to another digest"
+  cmp -s "$work/image.json" "$work/tag.json" || fail "The immutable $tag tag already refers to another digest"
 fi
-printf 'Verified %s%s at %s\n' "$revision" "${version:+ and $version}" "$digest"
+printf 'Verified %s%s at %s\n' "$revision" "${tag:+ and $tag}" "$digest"

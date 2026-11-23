@@ -154,16 +154,39 @@ run "learner_lab" {
         ep.service_name == "com.amazonaws.us-east-1.ecr.${service}" && ep.vpc_endpoint_type == "Interface" &&
         ep.private_dns_enabled && ep.subnet_ids == toset([aws_subnet.project["private"].id]) &&
         ep.security_group_ids == toset([aws_security_group.workload["registry"].id]) &&
-        length(jsondecode(ep.policy).Statement) == 2 &&
+        length(jsondecode(ep.policy).Statement) == (service == "api" ? 3 : 2) &&
         alltrue([for s in jsondecode(ep.policy).Statement :
           s.Effect == "Allow" && s.Principal == "*" && (s.Sid == "RegistryLogin" ?
             (s.Resource == "*" && toset(s.Action) == toset(["ecr:GetAuthorizationToken"])) :
             (s.Sid == "ReadAppImage" && s.Resource == aws_ecr_repository.app.arn &&
           toset(s.Action) == toset(["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"])))
-        ]) && toset([for s in jsondecode(ep.policy).Statement : s.Sid]) == toset(["RegistryLogin", "ReadAppImage"])
+          if s.Sid != "ListDeploymentImagesFromServer"
+          ]) && toset([for s in jsondecode(ep.policy).Statement : s.Sid]) == toset(concat(
+          ["RegistryLogin", "ReadAppImage"], service == "api" ? ["ListDeploymentImagesFromServer"] : []
+        ))
       ])
     )
-    error_message = "Both private ECR endpoints must serve only login and pulls from the immutable, scanned application repository."
+    error_message = "Both private ECR endpoints must preserve existing pulls; only the API endpoint may list deployment images."
+  }
+
+  assert {
+    condition = (
+      alltrue([for s in local.ecr_node_permissions.agent : !contains(s.Action, "ecr:ListImages")]) &&
+      one([for s in local.ecr_node_permissions.server : s.Sid if contains(s.Action, "ecr:ListImages")]) == "ListDeploymentImagesFromServer" &&
+      anytrue([for s in jsondecode(aws_vpc_endpoint.ecr["api"].policy).Statement : jsonencode(s) == jsonencode({
+        Sid       = "ListDeploymentImagesFromServer"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = ["ecr:ListImages"]
+        Resource  = aws_ecr_repository.app.arn
+        Condition = {
+          ArnEquals    = { "aws:PrincipalArn" = "arn:aws:iam::123456789012:role/LabRole" }
+          StringEquals = { "aws:SourceVpc" = aws_vpc.project.id, "aws:Ec2InstanceSourceVpc" = aws_vpc.project.id }
+          IpAddress    = { "aws:VpcSourceIp" = "10.56.1.10", "aws:Ec2InstanceSourcePrivateIPv4" = "10.56.1.10" }
+        }
+      })])
+    )
+    error_message = "Listing must target only the project repository and require server credentials used by that server through its VPC."
   }
 
   assert {

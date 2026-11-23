@@ -45,7 +45,7 @@ INDEX(.planned_values.root_module.resources[]; .address) as $resources
 | require($ecr.name == "dv-ayan-kassen-1951-scholarship-applications" and $ecr.image_tag_mutability == "IMMUTABLE"
     and any($ecr.image_scanning_configuration[]; .scan_on_push == true)
     and any($ecr.encryption_configuration[]; .encryption_type == "KMS")
-    and linked($config["aws_iam_role_policy.bootstrap"]; "policy"; "local.ecr_pull_permissions")
+    and linked($config["aws_iam_role_policy.bootstrap"]; "policy"; "local.ecr_node_permissions")
     and ([$resources[] | select(.type == "aws_vpc_endpoint" and .name == "ecr") | .index] | sort) == ["api", "dkr"];
     "Standard accounts must have a scanned private ECR repository, read permissions for the nodes and both ECR endpoints")
 | require($s3.vpc_endpoint_type == "Gateway" and $s3.service_name == "com.amazonaws.us-east-1.s3"

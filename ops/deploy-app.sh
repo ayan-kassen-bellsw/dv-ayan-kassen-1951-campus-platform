@@ -90,6 +90,11 @@ patches:
             containers:
               - name: app
                 image: "$APP_IMAGE"
+                env:
+                  - name: GIT_SHA
+                    value: "$GIT_SHA"
+                  - name: APP_VERSION
+                    value: "$APP_VERSION"
 YAML
 "${kube[@]}" kustomize "$work" > "$work/rendered.yaml"
 if [[ $1 == render ]]; then

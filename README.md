@@ -56,7 +56,7 @@ GitHub Actions runs the following checks on pull requests and pushes to `main`.
 - CI builds the application image and starts it with PostgreSQL using Docker Compose. It checks readiness, saves a scholarship application, and tests the password endpoint with 15- and 16-character inputs. Trivy scans the built image and fails the check on HIGH or CRITICAL findings.
 - The Terraform job checks formatting, validates the configuration and scans it with Trivy. Offline plans verify both the standard AWS and Learner Lab configurations, including the two EC2 nodes and their bootstrap permissions.
 
-The [ECR guide](docs/ecr.md) covers publishing that same tested image from `main`, giving a release its immutable version tag, and verifying a pull from the private agent.
+After a successful `main` build, GitHub publishes the tested image to ECR. The k3s server rolls out its digest, and GitHub verifies the commit and readiness through Ingress on two replicas. The [ECR and deployment guide](docs/ecr.md#deploy-images-from-main) covers setup, credential renewal and rollback.
 
 The [PostgreSQL guide](docs/postgres.md) covers deployment on the private worker, credential rotation, and the k3s test that verifies role permissions and persistence across Pod replacement.
 
