@@ -80,7 +80,7 @@ resource "aws_iam_role_policy" "bootstrap" {
           }
         }
       },
-    ], local.ecr_pull_permissions)
+    ], local.ecr_pull_permissions, [for permission in local.backup_permissions : permission if each.key == "agent"])
   })
 }
 

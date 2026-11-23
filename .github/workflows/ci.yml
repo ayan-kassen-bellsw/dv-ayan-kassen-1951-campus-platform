@@ -75,8 +75,12 @@ jobs:
         run: bash .github/scripts/test-publish-ecr.sh
       - name: Verify PostgreSQL persistence and the HTTP password policy
         run: bash .github/scripts/compose-smoke.sh
-      - name: Verify PostgreSQL, both application replicas and Traefik on k3s
-        run: bash .github/scripts/test-k3s.sh .github/scripts/test-k8s-postgres.sh .github/scripts/test-k8s-app.sh
+      - name: Verify PostgreSQL, application rollout and backup recovery on k3s
+        run: >-
+          bash .github/scripts/test-k3s.sh
+          .github/scripts/test-k8s-postgres.sh
+          .github/scripts/test-k8s-app.sh
+          .github/scripts/test-postgres-backup.sh
       - name: Scan the final image for HIGH and CRITICAL vulnerabilities
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |

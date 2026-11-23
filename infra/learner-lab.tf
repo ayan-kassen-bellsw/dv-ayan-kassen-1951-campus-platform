@@ -78,6 +78,7 @@ locals {
     Version = "2012-10-17"
     Statement = [
       local.ecr_s3_read,
+      local.backup_endpoint_access,
       {
         Sid       = "ReadBootstrapFromNodes"
         Effect    = "Allow"

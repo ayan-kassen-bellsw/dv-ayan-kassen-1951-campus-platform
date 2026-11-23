@@ -48,6 +48,11 @@ output "bootstrap_bucket" {
   value       = local.bootstrap_bucket_name
 }
 
+output "backup_bucket_name" {
+  description = "Private bucket for the seven-day PostgreSQL backup archives."
+  value       = local.backup_bucket
+}
+
 output "ecr_repository_url" {
   description = "Private ECR repository URL for the scholarship application."
   value       = aws_ecr_repository.app.repository_url

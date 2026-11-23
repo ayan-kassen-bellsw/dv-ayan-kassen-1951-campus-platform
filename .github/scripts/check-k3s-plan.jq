@@ -34,6 +34,13 @@ INDEX(.planned_values.root_module.resources[]; .address) as $resources
     and all($resources[]; .type != "terraform_data" or .name != "bootstrap_bucket");
     "The standard account must create its own roles, bucket and rotating KMS key")
 | $resources["aws_vpc_endpoint.bootstrap"].values as $s3
+| $resources["aws_s3_bucket.backups[0]"].values as $backup
+| require($backup.bucket_prefix == "dv-ayan-kassen-1951-backups-" and $backup.force_destroy == false
+    and $resources["aws_kms_key.backups[0]"].values.enable_key_rotation == true
+    and any($resources["aws_s3_bucket_lifecycle_configuration.backups"].values.rule[];
+      .status == "Enabled" and .filter[0].prefix == "postgresql/" and .expiration[0].days == 7)
+    and linked($config["aws_iam_role_policy.bootstrap"]; "policy"; "local.backup_permissions");
+    "Standard accounts must protect backup archives and expire them after seven days")
 | $resources["aws_ecr_repository.app"].values as $ecr
 | require($ecr.name == "dv-ayan-kassen-1951-scholarship-applications" and $ecr.image_tag_mutability == "IMMUTABLE"
     and any($ecr.image_scanning_configuration[]; .scan_on_push == true)

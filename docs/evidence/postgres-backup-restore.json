@@ -1,0 +1,40 @@
+{
+  "verified_at_utc": "2026-11-23T06:12:03Z",
+  "environment": "AWS Academy Learner Lab, us-east-1",
+  "scheduler": {
+    "host": "private k3s agent",
+    "cron_equivalent_utc": "56 4 * * *",
+    "enabled": true,
+    "active": true,
+    "next_fire_utc": "Tue 2026-11-24 04:56:00 UTC",
+    "drill_trigger": "manual systemctl start of the scheduled service",
+    "service_result": "success"
+  },
+  "s3": {
+    "object_key": "postgresql/campus-20261123T061109Z-ee6c6117-73d7-4ae3-ac3b-15305a3106c7.dump",
+    "bytes": 6490,
+    "sha256": "077d4ddca55d253cfb83f7310c01d2ea4926f61f53771d7b016b1a82cc11d678",
+    "server_side_encryption": "aws:kms",
+    "lifecycle_status": "Enabled",
+    "lifecycle_prefix": "postgresql/",
+    "expiration_days": 7
+  },
+  "source_database": "campus",
+  "restored_database": "campus_restore_20261123_061100",
+  "original": {
+    "item_id": 1,
+    "item_sha256": "77abe301ebe20d9e611277db7714da1b3999cb394466823f6d883a63d741d8e6",
+    "attachment_name": "verification.txt",
+    "attachment_bytes": 67,
+    "attachment_sha256": "f4da89d4b4287b198590a70b996bc197cda731fb48bce40d9b3deb2d153051dd"
+  },
+  "restored": {
+    "item_id": 1,
+    "item_sha256": "77abe301ebe20d9e611277db7714da1b3999cb394466823f6d883a63d741d8e6",
+    "attachment_name": "verification.txt",
+    "attachment_bytes": 67,
+    "attachment_sha256": "f4da89d4b4287b198590a70b996bc197cda731fb48bce40d9b3deb2d153051dd"
+  },
+  "all_application_fields_match": true,
+  "attachment_bytes_match_by_sha256": true
+}
