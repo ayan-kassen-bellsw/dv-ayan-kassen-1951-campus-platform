@@ -1,0 +1,40 @@
+{
+  "scope": "Isolated local k3d cluster on Docker, accessed through its loopback Traefik Ingress",
+  "tested_on_utc": "2026-11-23",
+  "k3s_version": "v1.37.2+k3s1",
+  "nodes": {"servers": 1, "agents": 1},
+  "application": {
+    "initial_ready_replicas": 2,
+    "database": "PostgreSQL StatefulSet with a persistent volume on the agent",
+    "observed": [
+      "Posted a scholarship application over HTTP and read it back through Ingress",
+      "Uploaded 1024 random bytes and verified their SHA-256 from both app replicas",
+      "Downloaded the identical attachment after the rolling update and rollback"
+    ]
+  },
+  "rolling_update_and_rollback": {
+    "versions_observed": ["local-1", "local-2", "local-1"],
+    "probe": "HTTP read of the stored scholarship through Ingress throughout both rollouts",
+    "successful_sampled_requests": 174,
+    "failed_sampled_requests": 0
+  },
+  "autoscaling": {
+    "verified_at_utc": "2026-11-23T00:16:23Z",
+    "target_cpu_percent_of_request": 70,
+    "before": {"replicas": 2, "cpu_percent_of_request": 12},
+    "under_load": {"ready_replicas": 4, "cpu_percent_of_request": 494},
+    "probe": "20 concurrent HTTP clients requesting /healthz through Ingress",
+    "successful_requests": 18822,
+    "failed_requests": 0
+  },
+  "node_maintenance": {
+    "verified_at_utc": "2026-11-23T00:18:40Z",
+    "procedure": "Cordoned and drained the local server, checked readiness and then uncordoned it. PostgreSQL and the Traefik controller ran on the agent throughout.",
+    "initial_result": "The first drain exposed an HTTP 502 while app pods terminated. The repeat used an eight-second preStop delay.",
+    "app_replicas_before_repeat": {"server": 3, "agent": 1},
+    "ready_app_replicas_after_repeat": {"server": 0, "agent": 4},
+    "successful_sampled_scholarship_reads_during_repeat": 73,
+    "failed_sampled_scholarship_reads_during_repeat": 0
+  },
+  "teardown": "Deleted the disposable local cluster, its network and volume, test kubeconfig and temporary application image tag."
+}

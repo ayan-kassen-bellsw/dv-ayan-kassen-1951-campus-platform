@@ -12,11 +12,11 @@ from fastapi import FastAPI, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from .analytics import Analytics
 from .config import ConfigError, Settings, load_settings
-from .db import Database, Item
+from .db import AttachmentBlob, Database, Item
 from .logs import setup_logging
 from .security import check_password
 from .storage import make_storage
@@ -55,7 +55,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     setup_logging(settings.log_level, settings.log_format, settings.secrets)
 
     db = Database(settings.db_url)
-    storage = make_storage(settings.storage_backend, settings.bucket)
+    storage = (
+        None if settings.storage_backend == "database" else make_storage(settings.storage_backend, settings.bucket)
+    )
 
     registry = CollectorRegistry()
     requests_total = Counter("http_requests_total", "HTTP requests", ["method", "route", "status"], registry=registry)
@@ -65,7 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        db.create_schema()
+        db.create_schema(database_attachments=storage is None)
         app.state.analytics = Analytics(settings.clickhouse_url, settings.app_owner)
         log.info("started", extra={"event": "startup"})
         log.info("db=%s storage=%s version=%s", settings.db_engine, settings.storage_backend, settings.app_version)
@@ -136,7 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/readyz")
     def readyz():
-        checks = {"db": db.ping(), "storage": storage.check()}
+        checks = {"db": db.ping(), "storage": db.attachments_ready() if storage is None else storage.check()}
         code = 200 if all(checks.values()) else 503
         return JSONResponse({"ready": code == 200, "checks": checks}, status_code=code)
 
@@ -163,8 +165,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.analytics.record("create", item.id)
             return to_out(item)
 
-    def get_or_404(s, item_id: int) -> Item:
-        item = s.get(Item, item_id)
+    def get_or_404(s, item_id: int, *, lock: bool = False) -> Item:
+        item = s.get(Item, item_id, with_for_update=lock)
         if not item:
             raise HTTPException(404, "item not found")
         return item
@@ -186,20 +188,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.delete("/api/items/{item_id}", status_code=204)
     def delete_item(item_id: int):
         with db.session() as s:
-            s.delete(get_or_404(s, item_id))
+            item = get_or_404(s, item_id, lock=storage is None)
+            if storage is None:
+                s.execute(delete(AttachmentBlob).where(AttachmentBlob.item_id == item.id))
+            s.delete(item)
             s.commit()
             app.state.analytics.record("delete", item_id)
         return Response(status_code=204)
 
     @app.post("/api/items/{item_id}/attachment", response_model=ItemOut)
     async def upload(item_id: int, file: UploadFile):
-        data = await file.read()
+        data = await file.read(10 * 1024 * 1024 + 1)
         if len(data) > 10 * 1024 * 1024:
             raise HTTPException(413, "file too large (max 10 MB)")
         with db.session() as s:
-            item = get_or_404(s, item_id)
+            item = get_or_404(s, item_id, lock=storage is None)
             key = f"items/{item_id}/{uuid.uuid4().hex}"
-            storage.put(key, data, file.content_type or "application/octet-stream")
+            if storage is None:
+                s.merge(AttachmentBlob(item_id=item.id, content=data))
+            else:
+                storage.put(key, data, file.content_type or "application/octet-stream")
             item.attachment_key, item.attachment_name = key, file.filename
             item.attachment_type = file.content_type
             s.commit()
@@ -209,10 +217,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/items/{item_id}/attachment")
     def download(item_id: int):
         with db.session() as s:
-            item = get_or_404(s, item_id)
+            item = get_or_404(s, item_id, lock=storage is None)
             if not item.attachment_key:
                 raise HTTPException(404, "no attachment")
-            data = storage.get(item.attachment_key)
+            if storage is None:
+                blob = s.get(AttachmentBlob, item.id)
+                if blob is None:
+                    raise HTTPException(404, "attachment data missing")
+                data = blob.content
+            else:
+                data = storage.get(item.attachment_key)
             headers = {"content-disposition": f'attachment; filename="{item.attachment_name}"'}
             return Response(data, media_type=item.attachment_type or "application/octet-stream", headers=headers)
 

@@ -2,7 +2,9 @@
 
 Terraform defines the private repository `dv-ayan-kassen-1951-scholarship-applications` in `us-east-1`. Image tags are immutable. ECR scans images on push and encrypts them with its AWS-managed KMS key. The registry API and Docker endpoints each use one network interface in the private subnet. Only the cluster security group can connect over HTTPS. Both nodes can download image layers through the existing regional S3 gateway. [ECR private connectivity](https://docs.aws.amazon.com/AmazonECR/latest/userguide/vpc-endpoints.html)
 
-An authenticated plan against the existing two-node Learner Lab showed **6 additions, 1 in-place update and 0 deletions**. The update extends the S3 gateway endpoint policy. Neither EC2 instance needs replacement. This stage was checked with a plan only. The two new interfaces together cost about **$0.02/hour** in one availability zone, plus data processing and ECR storage once deployed. [AWS PrivateLink pricing](https://aws.amazon.com/privatelink/pricing/)
+The Learner Lab apply created six resources and updated the S3 gateway endpoint policy in place. The following plan returned exit code 0. The private agent pulled and executed the published `v0.1.0` image by digest. [Live pull result](evidence/ecr-private-agent.txt)
+
+The two interfaces together cost about **$0.02/hour** in one availability zone, plus data processing and ECR storage. [AWS PrivateLink pricing](https://aws.amazon.com/privatelink/pricing/)
 
 ## Enable publishing after provisioning
 

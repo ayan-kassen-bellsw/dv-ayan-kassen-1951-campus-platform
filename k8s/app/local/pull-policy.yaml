@@ -1,0 +1,10 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dv-ayan-kassen-1951-app
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          imagePullPolicy: Never

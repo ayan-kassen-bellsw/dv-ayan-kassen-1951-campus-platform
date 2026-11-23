@@ -56,6 +56,24 @@ def test_attachment_roundtrip(client):
     assert client.get(f"/api/items/{item_id}/attachment").content == b"hello"
 
 
+def test_database_attachments_survive_replica_restart(tmp_path, monkeypatch):
+    monkeypatch.setenv("DB_URL", f"sqlite:///{tmp_path / 'shared.db'}")
+    monkeypatch.setenv("SECRET_KEY", GOOD_KEY)
+    monkeypatch.setenv("STORAGE_BACKEND", "database")
+    monkeypatch.delenv("BUCKET", raising=False)
+    with TestClient(create_app()) as sender:
+        item_id = sender.post("/api/items", json={"title": "Shared application"}).json()["id"]
+        url = f"/api/items/{item_id}/attachment"
+        assert sender.post(url, files={"file": ("original.txt", b"first")}).status_code == 200
+    with TestClient(create_app()) as reader:
+        assert reader.get("/readyz").json()["ready"]
+        assert reader.get(url).content == b"first"
+        assert reader.post(url, files={"file": ("updated.txt", b"replacement")}).status_code == 200
+        assert reader.get(url).content == b"replacement"
+        assert reader.delete(f"/api/items/{item_id}").status_code == 204
+        assert reader.get(url).status_code == 404
+
+
 def test_metrics(client):
     client.post("/api/items", json={"title": "m"})
     body = client.get("/metrics").text

@@ -75,8 +75,8 @@ jobs:
         run: bash .github/scripts/test-publish-ecr.sh
       - name: Verify PostgreSQL persistence and the HTTP password policy
         run: bash .github/scripts/compose-smoke.sh
-      - name: Verify PostgreSQL roles and PVC persistence on k3s
-        run: bash .github/scripts/test-k3s.sh .github/scripts/test-k8s-postgres.sh
+      - name: Verify PostgreSQL, both application replicas and Traefik on k3s
+        run: bash .github/scripts/test-k3s.sh .github/scripts/test-k8s-postgres.sh .github/scripts/test-k8s-app.sh
       - name: Scan the final image for HIGH and CRITICAL vulnerabilities
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
@@ -123,9 +123,12 @@ jobs:
           "$RUNNER_TEMP/trivy" config --tf-vars "$RUNNER_TEMP/learner.tfvars" --severity HIGH,CRITICAL --exit-code 1 infra
       - name: Verify standard and Learner Lab Terraform plans and k3s bootstrap
         run: bash .github/scripts/terraform-plan.sh
-      - name: Scan the rendered PostgreSQL manifests
+      - name: Scan the rendered PostgreSQL and application manifests
         run: |
           mkdir -p "$RUNNER_TEMP/k8s-manifests"
           kubectl kustomize k8s/postgres > "$RUNNER_TEMP/k8s-manifests/postgres.yaml"
+          export GIT_SHA="$GITHUB_SHA" APP_VERSION=ci APP_OWNER="Scholarship CI"
+          export APP_IMAGE="123456789012.dkr.ecr.us-east-1.amazonaws.com/dv-ayan-kassen-1951-scholarship-applications@sha256:$(printf '%064d' 0)"
+          bash ops/deploy-app.sh render > "$RUNNER_TEMP/k8s-manifests/app.yaml"
           "$RUNNER_TEMP/trivy" config --severity HIGH,CRITICAL --exit-code 1 \
             --ignore-policy .github/scripts/postgres-trivy.rego "$RUNNER_TEMP/k8s-manifests"
